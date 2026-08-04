@@ -80,3 +80,6 @@ export const IconEyeOff = (p: SVGProps<SVGSVGElement>) => (
 export const IconPack = (p: SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><path d="M6 4h9l3 3.5V20a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" /><path d="M15 4v3.5h3" /><path d="M9 12h6M9 15.5h4" /><circle cx="12" cy="9" r="1.1" fill="currentColor" /></svg>
 );
+export const IconMenu = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+);

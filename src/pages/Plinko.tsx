@@ -11,14 +11,15 @@ import { WinCelebration } from "../components/ui/WinCelebration";
 import { formatCredits, cn } from "../lib/format";
 import { maxBetFor } from "../lib/betting";
 import { xpForPayout } from "../lib/xp";
-import { ROWS, BUCKETS, BUCKET_MULTIPLIERS, RISK_LABEL, dropBall, type RiskLevel, type DropResult } from "../lib/plinkoEngine";
+import { ROWS, BUCKET_MULTIPLIERS, RISK_LABEL, dropBall, type RiskLevel, type DropResult } from "../lib/plinkoEngine";
 import { tierFromMultiplier, type WinTier } from "../lib/winTiers";
 
 const RISKS: RiskLevel[] = ["low", "medium", "high", "extreme"];
 const BALL_COUNTS = [1, 3, 5, 10];
+// BOARD_WIDTH is only a reference used to turn peg/ball positions into percentages — the board
+// itself renders at 100% of its (responsive, max 560px) container width, never a fixed pixel size.
 const BOARD_WIDTH = 560;
 const ROW_HEIGHT = 24;
-const BUCKET_WIDTH = BOARD_WIDTH / BUCKETS;
 const STAGGER = 0.12;
 
 interface Batch {
@@ -29,7 +30,7 @@ interface Batch {
 function ballPath(result: DropResult) {
   const displacements = result.path.reduce<number[]>((acc, r) => [...acc, acc[acc.length - 1] + (r ? 1 : -1)], [0]);
   return {
-    xs: displacements.map((d) => ((d + ROWS) / (2 * ROWS)) * BOARD_WIDTH),
+    xs: displacements.map((d) => ((d + ROWS) / (2 * ROWS)) * 100),
     ys: displacements.map((_, i) => i * ROW_HEIGHT),
   };
 }
@@ -115,16 +116,16 @@ export function Plinko() {
       </div>
 
       <Card className="p-4 sm:p-8" glow>
-        <div className="relative mx-auto overflow-hidden rounded-2xl border border-white/10 bg-ink-950/60 pt-6" style={{ width: BOARD_WIDTH, maxWidth: "100%" }}>
+        <div className="relative mx-auto w-full overflow-hidden rounded-2xl border border-white/10 bg-ink-950/60 pt-6" style={{ maxWidth: BOARD_WIDTH }}>
           <div className="relative" style={{ height: ROWS * ROW_HEIGHT + 20 }}>
             {Array.from({ length: ROWS }, (_, r) => {
               const count = r + 3;
-              const spacing = BOARD_WIDTH / (count + 1);
+              const spacing = 100 / (count + 1);
               return Array.from({ length: count }, (_, p) => (
                 <span
                   key={`${r}-${p}`}
                   className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/20"
-                  style={{ left: spacing * (p + 1), top: r * ROW_HEIGHT + 8 }}
+                  style={{ left: `${spacing * (p + 1)}%`, top: r * ROW_HEIGHT + 8 }}
                 />
               ));
             })}
@@ -135,8 +136,8 @@ export function Plinko() {
                 <motion.div
                   key={`${dropKey}-${i}`}
                   className="absolute h-3 w-3 -translate-x-1/2 rounded-full bg-gold-400 shadow-glow-gold"
-                  initial={{ x: xs[0], y: -10, opacity: 1 }}
-                  animate={{ x: xs, y: ys }}
+                  initial={{ left: `${xs[0]}%`, top: -10, opacity: 1 }}
+                  animate={{ left: xs.map((v) => `${v}%`), top: ys }}
                   transition={{
                     duration: ROWS * 0.15,
                     delay: i * STAGGER,
@@ -149,18 +150,17 @@ export function Plinko() {
             })}
           </div>
 
-          <div className="flex" style={{ width: BOARD_WIDTH }}>
+          <div className="flex w-full">
             {BUCKET_MULTIPLIERS[risk].map((m, i) => {
               const isWinner = finalBuckets.has(i);
               return (
                 <div
                   key={i}
                   className={cn(
-                    "flex items-center justify-center border-t py-2 text-[10px] font-bold sm:text-xs",
+                    "flex flex-1 items-center justify-center border-t py-2 text-[9px] font-bold sm:text-xs",
                     isWinner ? "border-gold-400 bg-gold-500/20 text-gold-300" : "border-white/10 text-ice-200/60",
                     m >= 5 ? "text-red-400" : ""
                   )}
-                  style={{ width: BUCKET_WIDTH }}
                 >
                   x{m}
                 </div>

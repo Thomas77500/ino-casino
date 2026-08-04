@@ -8,12 +8,12 @@ import { TABS, type AppTab } from "../../lib/navigation";
 import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { AvatarBubble } from "../ui/AvatarBubble";
 import { Button } from "../ui/Button";
-import { IconCoin, IconGift, IconVaultDoor } from "../icons";
+import { IconCoin, IconGift, IconVaultDoor, IconMenu } from "../icons";
 import { cn } from "../../lib/format";
 import { levelTitle, displayLevel } from "../../lib/levelTitles";
 import { exploitTitleLabel } from "../../lib/exploitTitles";
 
-export function Header({ active, onNavigate }: { active: AppTab; onNavigate: (t: AppTab) => void }) {
+export function Header({ active, onNavigate, onMenuClick }: { active: AppTab; onNavigate: (t: AppTab) => void; onMenuClick: () => void }) {
   const credits = useCasinoStore((s) => s.credits);
   const level = useCasinoStore((s) => s.level);
   const avatar = useAuthStore((s) => s.account?.avatar);
@@ -38,6 +38,10 @@ export function Header({ active, onNavigate }: { active: AppTab; onNavigate: (t:
   return (
     <header className="sticky top-0 z-50 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3 sm:px-6">
+        <button onClick={onMenuClick} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-ice-200/80 hover:bg-white/5 hover:text-white lg:hidden" aria-label="Ouvrir le menu">
+          <IconMenu className="h-5 w-5" />
+        </button>
+
         <button onClick={() => onNavigate("home")} className="flex items-center gap-2 shrink-0">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-electric-400 to-electric-600 shadow-glow">
             <span className="font-display text-lg font-bold text-white">I</span>

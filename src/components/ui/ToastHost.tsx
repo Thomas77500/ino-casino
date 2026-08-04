@@ -11,7 +11,7 @@ const kindStyles = {
 export function ToastHost() {
   const toasts = useToastStore((s) => s.toasts);
   return (
-    <div className="pointer-events-none fixed top-20 right-4 z-[100] flex w-[320px] flex-col gap-2">
+    <div className="pointer-events-none fixed top-20 inset-x-4 z-[100] flex flex-col gap-2 sm:inset-x-auto sm:right-4 sm:w-[320px]">
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div

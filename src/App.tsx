@@ -72,6 +72,7 @@ async function claimPendingReferrals(userId: string) {
 
 export default function App() {
   const [tab, setTab] = useState<AppTab>("home");
+  const [navOpen, setNavOpen] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const initializing = useAuthStore((s) => s.initializing);
   const account = useAuthStore((s) => s.account);
@@ -100,13 +101,16 @@ export default function App() {
       checkAdmin(account.id);
       fetchJackpot();
       claimPendingReferrals(account.id);
+      useCasinoStore.getState().hydrateFromCloud(account.id);
       const unsubscribeStatus = subscribeGameStatuses();
       const unsubscribeJackpot = subscribeJackpot();
       const unsubscribeFeed = subscribeGlobalFeed();
+      const unsubscribeCasino = useCasinoStore.subscribe(() => useCasinoStore.getState().syncToCloud(account.id));
       return () => {
         unsubscribeStatus();
         unsubscribeJackpot();
         unsubscribeFeed();
+        unsubscribeCasino();
       };
     }
     stopPresence();
@@ -116,6 +120,7 @@ export default function App() {
 
   function navigate(next: AppTab) {
     setTab(next);
+    setNavOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -137,10 +142,10 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <Header active={tab} onNavigate={navigate} />
+      <Header active={tab} onNavigate={navigate} onMenuClick={() => setNavOpen(true)} />
       <LuckyHourBanner />
       <ToastHost />
-      <main className="flex-1 pb-16 lg:pb-0">
+      <main className="flex-1">
         <AnimatePresence mode="wait">
           <motion.div
             key={tab}
@@ -154,7 +159,7 @@ export default function App() {
         </AnimatePresence>
       </main>
       {tab === "home" && <Footer />}
-      <MobileNav active={tab} onNavigate={navigate} />
+      <MobileNav active={tab} open={navOpen} onNavigate={navigate} onClose={() => setNavOpen(false)} />
       <WinCelebration tier={celebration.tier} payout={celebration.payout} onClose={celebration.clear} game={celebration.game} />
     </div>
   );

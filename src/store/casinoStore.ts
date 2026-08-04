@@ -7,6 +7,7 @@ import { MAX_LEVEL } from "../lib/levelTitles";
 import { rollMysteryReward } from "../lib/mysteryBox";
 import { isLuckyHourNow, LUCKY_HOUR_BONUS_RATE } from "../lib/luckyHour";
 import { useJackpotStore } from "./jackpotStore";
+import { supabase } from "../lib/supabase";
 
 export interface HistoryEntry {
   id: string;
@@ -81,7 +82,13 @@ interface CasinoState {
   claimWheel: () => { amount: number; index: number } | null;
   wheelMsRemaining: () => number;
   claimMission: (id: string) => number;
+  hydrateFromCloud: (userId: string) => Promise<void>;
+  syncToCloud: (userId: string) => void;
 }
+
+// Debounce handle for cloud sync — module-scope since the store is a singleton, not part of the
+// persisted state itself.
+let syncTimer: ReturnType<typeof setTimeout> | undefined;
 
 export const useCasinoStore = create<CasinoState>()(
   persist(
@@ -230,6 +237,26 @@ export const useCasinoStore = create<CasinoState>()(
         });
         get().addXp(mission.xp);
         return reward;
+      },
+
+      // Progression is local-first (zustand persist below) but also mirrored to Supabase so it
+      // follows the account across devices/browsers instead of staying stuck in one localStorage.
+      // Best-effort: silently no-ops if schema_progress.sql hasn't been run yet.
+      hydrateFromCloud: async (userId) => {
+        const { data, error } = await supabase.from("casino_progress").select("state").eq("user_id", userId).maybeSingle();
+        if (error) return;
+        if (data?.state) {
+          set(data.state as Partial<CasinoState>);
+        } else {
+          await supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())) });
+        }
+      },
+
+      syncToCloud: (userId) => {
+        clearTimeout(syncTimer);
+        syncTimer = setTimeout(() => {
+          supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: new Date().toISOString() });
+        }, 1500);
       },
     }),
     { name: "ino-casino-store" }
