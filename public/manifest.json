@@ -1,0 +1,13 @@
+{
+  "name": "Ino Casino",
+  "short_name": "Ino Casino",
+  "description": "Casino social 100% fictif — crédits virtuels uniquement, aucun argent réel.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050914",
+  "theme_color": "#050914",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

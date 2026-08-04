@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm -v)",
+      "Bash(npx vite *)",
+      "Bash(curl -sf http://localhost:5173)",
+      "Read(//tmp/**)",
+      "Bash(npx --yes playwright --version)",
+      "Bash(node -e \"console.log\\(require.resolve\\('playwright'\\)\\)\")",
+      "Bash(npx playwright *)",
+      "Bash(node \"C:\\\\Users\\\\THOMAS~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-ThomasTHOUAYE-ino-casino\\\\0b5c6de0-b482-4fde-a623-672e5d200e6a\\\\scratchpad\\\\verify.mjs\")",
+      "Bash(cp \"C:\\\\Users\\\\THOMAS~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-ThomasTHOUAYE-ino-casino\\\\0b5c6de0-b482-4fde-a623-672e5d200e6a\\\\scratchpad\\\\verify.mjs\" \"c:/Users/ThomasTHOUAYE/ino casino/verify.mjs\")",
+      "Bash(node verify.mjs)",
+      "Bash(node verify2.mjs)",
+      "Bash(node verify3.mjs)",
+      "Bash(rm -f verify2.mjs verify3.mjs)",
+      "Bash(node verify4.mjs)",
+      "Bash(node verify5.mjs)",
+      "Bash(node verify6.mjs)",
+      "Bash(node verify7.mjs)",
+      "Bash(node verify8.mjs)",
+      "Bash(rm -f verify4.mjs verify5.mjs verify6.mjs verify7.mjs verify8.mjs)",
+      "Bash(node verify9.mjs)",
+      "Bash(node debug-mobile.mjs)",
+      "Bash(node verify10.mjs)",
+      "Bash(node verify11.mjs)",
+      "Bash(node diag.mjs)",
+      "Bash(node diag2.mjs)",
+      "Bash(node verify12.mjs)",
+      "Bash(node verify13.mjs)",
+      "Bash(node verify14.mjs)",
+      "Bash(node verify15.mjs)",
+      "Bash(node verify16.mjs)"
+    ]
+  }
+}

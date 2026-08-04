@@ -1,0 +1,125 @@
+import { useEffect, useState } from "react";
+import { useFriendsStore } from "../store/friendsStore";
+import { usePresenceStore } from "../store/presenceStore";
+import { useToastStore } from "../store/toastStore";
+import { Card } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
+import { IconUsers } from "../components/icons";
+import { cn } from "../lib/format";
+
+export function Friends() {
+  const { friends, incoming, outgoing, loading, fetchAll, sendRequest, accept, decline, remove, subscribe } = useFriendsStore();
+  const onlineIds = usePresenceStore((s) => s.onlineIds);
+  const push = useToastStore((s) => s.push);
+  const [search, setSearch] = useState("");
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    fetchAll();
+    const unsubscribe = subscribe();
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    if (!search.trim() || sending) return;
+    setSending(true);
+    const result = await sendRequest(search.trim());
+    setSending(false);
+    push({ kind: result.ok ? "success" : "info", title: result.message });
+    if (result.ok) setSearch("");
+  }
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
+      <div className="mb-6 flex items-center gap-2">
+        <IconUsers className="h-6 w-6 text-electric-400" />
+        <div>
+          <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">Amis</h1>
+          <p className="text-sm text-ice-200/60">Retrouve tes amis, envoie des demandes, joue ensemble.</p>
+        </div>
+      </div>
+
+      <Card className="p-6" glow>
+        <form onSubmit={handleSend} className="flex gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Pseudo exact d'un joueur"
+            className="input"
+          />
+          <Button type="submit" disabled={sending || !search.trim()}>Ajouter</Button>
+        </form>
+      </Card>
+
+      {incoming.length > 0 && (
+        <Card className="mt-6 p-6">
+          <h2 className="mb-4 font-display text-lg font-semibold text-white">Demandes reçues</h2>
+          <ul className="flex flex-col gap-3">
+            {incoming.map((req) => (
+              <li key={req.friendshipId} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{req.from.avatar}</span>
+                  <span className="text-sm font-medium text-white">{req.from.username}</span>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="gold" onClick={() => accept(req.friendshipId)}>Accepter</Button>
+                  <Button size="sm" variant="secondary" onClick={() => decline(req.friendshipId)}>Refuser</Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {outgoing.length > 0 && (
+        <Card className="mt-6 p-6">
+          <h2 className="mb-4 font-display text-lg font-semibold text-white">Demandes envoyées</h2>
+          <ul className="flex flex-col gap-3">
+            {outgoing.map((req) => (
+              <li key={req.friendshipId} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">{req.avatar}</span>
+                  <span className="text-sm font-medium text-white">{req.username}</span>
+                </div>
+                <Badge tone="neutral">En attente</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      <Card className="mt-6 p-6">
+        <h2 className="mb-4 font-display text-lg font-semibold text-white">Mes amis ({friends.length})</h2>
+        {loading && friends.length === 0 ? (
+          <p className="text-xs text-ice-200/50">Chargement...</p>
+        ) : friends.length === 0 ? (
+          <p className="text-xs text-ice-200/50">Aucun ami pour l'instant — cherche un pseudo ci-dessus.</p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {friends.map((friend) => {
+              const online = onlineIds.has(friend.id);
+              return (
+                <li key={friend.friendshipId} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="relative text-xl">
+                      {friend.avatar}
+                      <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-ink-950", online ? "bg-emerald-400" : "bg-ice-200/20")} />
+                    </span>
+                    <span className="text-sm font-medium text-white">{friend.username}</span>
+                    {online && <Badge tone="success">En ligne</Badge>}
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => remove(friend.friendshipId)} className="text-ice-200/40">
+                    Retirer
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
