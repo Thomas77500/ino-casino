@@ -29,6 +29,7 @@ import { ScratchCards } from "./pages/ScratchCards";
 import { Bourse } from "./pages/Bourse";
 import { Braquage } from "./pages/Braquage";
 import { Boosters } from "./pages/Boosters";
+import { Cases } from "./pages/Cases";
 import { Bonus } from "./pages/Bonus";
 import { Rewards } from "./pages/Rewards";
 import { Leaderboard } from "./pages/Leaderboard";
@@ -50,6 +51,7 @@ const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = 
   bourse: () => <Bourse />,
   braquage: () => <Braquage />,
   boosters: () => <Boosters />,
+  cases: () => <Cases />,
   bonus: () => <Bonus />,
   rewards: () => <Rewards />,
   leaderboard: () => <Leaderboard />,

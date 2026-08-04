@@ -18,6 +18,7 @@ import {
   IconShield,
   IconBag,
   IconPack,
+  IconCrate,
 } from "../components/icons";
 
 export type AppTab =
@@ -32,6 +33,7 @@ export type AppTab =
   | "bourse"
   | "braquage"
   | "boosters"
+  | "cases"
   | "bonus"
   | "rewards"
   | "leaderboard"
@@ -53,6 +55,7 @@ export const TABS: { id: AppTab; label: string; icon: ComponentType<SVGProps<SVG
   { id: "bourse", label: "Bourse", icon: IconTrendUp },
   { id: "braquage", label: "Braquage", icon: IconVaultDoor },
   { id: "boosters", label: "Boosters", icon: IconPack },
+  { id: "cases", label: "Caisses", icon: IconCrate },
   { id: "bonus", label: "Bonus", icon: IconGift },
   { id: "rewards", label: "Récompenses", icon: IconTrophy },
   { id: "leaderboard", label: "Classement", icon: IconTrophy },
@@ -75,4 +78,5 @@ export const GATED_GAME_IDS: Partial<Record<AppTab, string>> = {
   bourse: "bourse",
   braquage: "braquage",
   boosters: "boosters",
+  cases: "cases",
 };

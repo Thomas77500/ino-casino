@@ -83,3 +83,6 @@ export const IconPack = (p: SVGProps<SVGSVGElement>) => (
 export const IconMenu = (p: SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><path d="M4 6h16M4 12h16M4 18h16" /></svg>
 );
+export const IconCrate = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M3 8l9-4.5L21 8v8l-9 4.5L3 16Z" /><path d="M3 8l9 4.5L21 8M12 12.5V21" /></svg>
+);

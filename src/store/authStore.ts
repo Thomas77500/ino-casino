@@ -26,13 +26,16 @@ interface AuthState {
   clearError: () => void;
 }
 
-async function fetchProfile(userId: string): Promise<{ username: string; avatar: string; frame: string | null; title: string | null } | null> {
+async function fetchProfile(userId: string): Promise<{ username: string; avatar: string; frame: string | null; title: string | null; banned: boolean } | null> {
   const { data } = await supabase.from("profiles").select("username, avatar").eq("id", userId).maybeSingle();
   if (!data) return null;
-  // frame/equipped_title only exist after schema_extras.sql runs — fetched separately and
-  // best-effort so login/init still work on a project that hasn't applied that migration yet.
-  const { data: cosmetics } = await supabase.from("profiles").select("frame, equipped_title").eq("id", userId).maybeSingle();
-  return { username: data.username, avatar: data.avatar, frame: cosmetics?.frame ?? null, title: cosmetics?.equipped_title ?? null };
+  // frame/equipped_title/banned only exist after their respective migrations — fetched separately
+  // and best-effort so login/init still work on a project that hasn't applied them yet.
+  const [{ data: cosmetics }, { data: banStatus }] = await Promise.all([
+    supabase.from("profiles").select("frame, equipped_title").eq("id", userId).maybeSingle(),
+    supabase.from("profiles").select("banned").eq("id", userId).maybeSingle(),
+  ]);
+  return { username: data.username, avatar: data.avatar, frame: cosmetics?.frame ?? null, title: cosmetics?.equipped_title ?? null, banned: banStatus?.banned ?? false };
 }
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
@@ -47,8 +50,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     const user = data.session?.user;
     if (user) {
       const profile = await fetchProfile(user.id);
-      if (profile) {
-        set({ account: { id: user.id, email: user.email ?? "", ...profile }, isAuthenticated: true });
+      if (profile?.banned) {
+        await supabase.auth.signOut();
+      } else if (profile) {
+        const { banned: _banned, ...rest } = profile;
+        set({ account: { id: user.id, email: user.email ?? "", ...rest }, isAuthenticated: true });
       }
     }
     set({ initializing: false });
@@ -59,8 +65,13 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         return;
       }
       const profile = await fetchProfile(session.user.id);
+      if (profile?.banned) {
+        await supabase.auth.signOut();
+        return;
+      }
       if (profile) {
-        set({ account: { id: session.user.id, email: session.user.email ?? "", ...profile }, isAuthenticated: true });
+        const { banned: _banned, ...rest } = profile;
+        set({ account: { id: session.user.id, email: session.user.email ?? "", ...rest }, isAuthenticated: true });
       }
     });
   },
@@ -130,8 +141,14 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       set({ loading: false, error: "Profil introuvable pour ce compte." });
       return false;
     }
+    if (profile.banned) {
+      await supabase.auth.signOut();
+      set({ loading: false, error: "Ce compte a été suspendu." });
+      return false;
+    }
+    const { banned: _banned, ...rest } = profile;
     set({
-      account: { id: data.user.id, email: data.user.email ?? email.trim(), ...profile },
+      account: { id: data.user.id, email: data.user.email ?? email.trim(), ...rest },
       isAuthenticated: true,
       loading: false,
     });

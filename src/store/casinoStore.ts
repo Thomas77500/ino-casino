@@ -11,7 +11,7 @@ import { supabase } from "../lib/supabase";
 
 export interface HistoryEntry {
   id: string;
-  game: "Slots" | "Blackjack" | "Roulette" | "ChickenRoad" | "Plinko" | "Crash" | "ScratchCards" | "Bourse" | "Braquage" | "Boosters" | "Bonus";
+  game: "Slots" | "Blackjack" | "Roulette" | "ChickenRoad" | "Plinko" | "Crash" | "ScratchCards" | "Bourse" | "Braquage" | "Boosters" | "Bonus" | "Cases";
   label: string;
   bet: number;
   payout: number;
@@ -242,13 +242,24 @@ export const useCasinoStore = create<CasinoState>()(
       // Progression is local-first (zustand persist below) but also mirrored to Supabase so it
       // follows the account across devices/browsers instead of staying stuck in one localStorage.
       // Best-effort: silently no-ops if schema_progress.sql hasn't been run yet.
+      //
+      // Never blindly trust the remote row over local: the debounced push in syncToCloud can
+      // still be in flight when the tab closes/refreshes, so remote can lag a few seconds behind
+      // what's already safely in localStorage. totalWagered+totalWon only ever goes up over a
+      // player's lifetime, so it's a reliable "which copy is further along" signal — pull remote
+      // only when it's actually ahead (a genuinely new device), otherwise push local up instead.
+      // This also self-heals a remote row that got stuck on a stale snapshot.
       hydrateFromCloud: async (userId) => {
         const { data, error } = await supabase.from("casino_progress").select("state").eq("user_id", userId).maybeSingle();
         if (error) return;
-        if (data?.state) {
-          set(data.state as Partial<CasinoState>);
+        const remote = data?.state as Partial<CasinoState> | undefined;
+        const localProgress = get().totalWagered + get().totalWon;
+        const remoteProgress = (remote?.totalWagered ?? 0) + (remote?.totalWon ?? 0);
+
+        if (remote && remoteProgress >= localProgress) {
+          set(remote);
         } else {
-          await supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())) });
+          await supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: new Date().toISOString() });
         }
       },
 

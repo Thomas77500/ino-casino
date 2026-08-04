@@ -19,6 +19,7 @@ export const GAME_LABELS: Record<string, string> = {
   bourse: "Bourse",
   braquage: "Braquage",
   boosters: "Boosters",
+  cases: "Caisses",
 };
 
 interface GameStatusState {

@@ -8,8 +8,10 @@ create table if not exists public.casino_progress (
 
 alter table public.casino_progress enable row level security;
 
-create policy "casino_progress_select_own" on public.casino_progress
-  for select using (auth.uid() = user_id);
+-- Readable by any signed-in user, not just its owner — the leaderboard ranks every registered
+-- player by their real progress, same tradeoff already accepted for profiles_select_all.
+create policy "casino_progress_select_all" on public.casino_progress
+  for select to authenticated using (true);
 
 create policy "casino_progress_insert_own" on public.casino_progress
   for insert with check (auth.uid() = user_id);
