@@ -76,7 +76,7 @@ export function Admin() {
     const state = { ...(data?.state ?? {}), credits: Math.max(0, (data?.state?.credits ?? user.credits) + delta) };
     const { error } = await supabase.from("casino_progress").upsert({ user_id: user.id, state, updated_at: new Date().toISOString() });
     if (error) {
-      push({ kind: "info", title: "Échec — la migration schema_progress.sql a-t-elle été exécutée ?" });
+      push({ kind: "info", title: "Échec de la mise à jour", description: error.message });
       return;
     }
     push({ kind: "success", title: `${user.username} — ${delta > 0 ? "+" : ""}${formatCredits(delta)} crédits` });
@@ -86,7 +86,7 @@ export function Admin() {
   async function toggleBan(user: AdminUser) {
     const { error } = await supabase.from("profiles").update({ banned: !user.banned }).eq("id", user.id);
     if (error) {
-      push({ kind: "info", title: "Échec — la migration schema_admin_users.sql a-t-elle été exécutée ?" });
+      push({ kind: "info", title: "Échec du bannissement", description: error.message });
       return;
     }
     push({ kind: "info", title: `${user.username} — ${user.banned ? "réactivé" : "banni"}` });
