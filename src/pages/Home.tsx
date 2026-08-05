@@ -7,24 +7,11 @@ import { Badge } from "../components/ui/Badge";
 import { ProgressBar } from "../components/ui/ProgressBar";
 import { AnimatedNumber } from "../components/ui/AnimatedNumber";
 import { LiveWinsFeed } from "../components/home/LiveWinsFeed";
-import { IconSlots, IconCards, IconRoulette, IconGift, IconChicken, IconPlinko, IconRocket, IconTicket, IconTrendUp, IconVaultDoor, IconPack } from "../components/icons";
 import { formatCredits } from "../lib/format";
 import { displayLevel } from "../lib/levelTitles";
-import type { AppTab } from "../lib/navigation";
+import { GAMES, type AppTab } from "../lib/navigation";
 
-const GAMES = [
-  { tab: "slots" as AppTab, title: "Machines à sous", desc: "4 machines à thème, de la faible à l'extrême volatilité.", icon: IconSlots, tag: "Populaire" },
-  { tab: "blackjack" as AppTab, title: "Blackjack Royal", desc: "Affronte le croupier, mise Paire Parfaite en option.", icon: IconCards, tag: "Stratégie" },
-  { tab: "roulette" as AppTab, title: "Roulette Électrique", desc: "Zone chanceuse, bonus spin et Dark Roulette fictifs.", icon: IconRoulette, tag: "Classique" },
-  { tab: "chickenroad" as AppTab, title: "Chicken Road", desc: "Avance case après case, encaisse avant la sortie de route.", icon: IconChicken, tag: "Nouveau" },
-  { tab: "plinko" as AppTab, title: "Plinko", desc: "Lâche la bille, vise les multiplicateurs jusqu'à x1000.", icon: IconPlinko, tag: "Nouveau" },
-  { tab: "crash" as AppTab, title: "Crash", desc: "Encaisse avant l'explosion — plus tu attends, plus ça paie.", icon: IconRocket, tag: "Nouveau" },
-  { tab: "scratch" as AppTab, title: "Cartes à Gratter", desc: "3 symboles identiques sur la grille et c'est gagné.", icon: IconTicket, tag: "Nouveau" },
-  { tab: "braquage" as AppTab, title: "Braquage", desc: "Choisis ton butin, évite les alarmes, extrais-toi à temps.", icon: IconVaultDoor, tag: "Nouveau" },
-  { tab: "boosters" as AppTab, title: "Boosters", desc: "Ouvre des boosters ou des displays, révèle et vends tes cartes.", icon: IconPack, tag: "Nouveau" },
-  { tab: "bourse" as AppTab, title: "Bourse", desc: "Mise à la hausse ou à la baisse — débloqué à 100M de gains cumulés.", icon: IconTrendUp, tag: "Secret" },
-  { tab: "bonus" as AppTab, title: "Bonus & Coffres", desc: "Roue bonus, coffre surprise et bonus quotidien.", icon: IconGift, tag: "Gratuit" },
-];
+const FEATURED_GAMES = GAMES.slice(0, 6);
 
 export function Home({ onNavigate }: { onNavigate: (t: AppTab) => void }) {
   const credits = useCasinoStore((s) => s.credits);
@@ -85,26 +72,27 @@ export function Home({ onNavigate }: { onNavigate: (t: AppTab) => void }) {
       <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="mb-6 flex items-center justify-between">
           <h2 className="font-display text-xl font-bold text-white sm:text-2xl">Jeux à la une</h2>
+          <Button size="sm" variant="ghost" onClick={() => onNavigate("games")}>Voir tous les jeux →</Button>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {GAMES.map((g, i) => (
+          {FEATURED_GAMES.map((g, i) => (
             <motion.div
-              key={g.tab}
+              key={g.id}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.4, delay: i * 0.08 }}
               whileHover={{ y: -6 }}
             >
-              <Card className="group flex h-full cursor-pointer flex-col p-5 transition-shadow hover:shadow-glow" onClick={() => onNavigate(g.tab)}>
+              <Card className="group flex h-full cursor-pointer flex-col p-5 transition-shadow hover:shadow-glow" onClick={() => onNavigate(g.id)}>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br from-electric-500/20 to-electric-400/10 text-electric-400 group-hover:from-electric-500 group-hover:to-electric-400 group-hover:text-white transition-colors">
                     <g.icon className="h-5 w-5" />
                   </div>
                   <Badge tone="electric">{g.tag}</Badge>
                 </div>
-                <h3 className="font-display text-lg font-bold text-white">{g.title}</h3>
-                <p className="mt-1 flex-1 text-sm text-ice-200/60">{g.desc}</p>
+                <h3 className="font-display text-lg font-bold text-white">{g.label}</h3>
+                <p className="mt-1 flex-1 text-sm text-ice-200/60">{g.blurb}</p>
                 <span className="mt-4 text-sm font-semibold text-electric-400 group-hover:text-electric-300">Jouer →</span>
               </Card>
             </motion.div>

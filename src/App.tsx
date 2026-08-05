@@ -7,6 +7,7 @@ import { useGameStatusStore } from "./store/gameStatusStore";
 import { useJackpotStore } from "./store/jackpotStore";
 import { useCelebrationStore } from "./store/celebrationStore";
 import { useGlobalFeedStore } from "./store/globalFeedStore";
+import { useGiftsStore } from "./store/giftsStore";
 import { AuthGate } from "./components/auth/AuthGate";
 import { Header } from "./components/layout/Header";
 import { MobileNav } from "./components/layout/MobileNav";
@@ -19,6 +20,7 @@ import { IconLock } from "./components/icons";
 import { GATED_GAME_IDS, type AppTab } from "./lib/navigation";
 import { supabase } from "./lib/supabase";
 import { Home } from "./pages/Home";
+import { Games } from "./pages/Games";
 import { Slots } from "./pages/Slots";
 import { Blackjack } from "./pages/Blackjack";
 import { Roulette } from "./pages/Roulette";
@@ -30,6 +32,7 @@ import { Bourse } from "./pages/Bourse";
 import { Braquage } from "./pages/Braquage";
 import { Boosters } from "./pages/Boosters";
 import { Cases } from "./pages/Cases";
+import { Pmu } from "./pages/Pmu";
 import { Bonus } from "./pages/Bonus";
 import { Rewards } from "./pages/Rewards";
 import { Leaderboard } from "./pages/Leaderboard";
@@ -41,6 +44,7 @@ import { Admin } from "./pages/Admin";
 
 const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = {
   home: (onNavigate) => <Home onNavigate={onNavigate} />,
+  games: (onNavigate) => <Games onNavigate={onNavigate} />,
   slots: () => <Slots />,
   blackjack: () => <Blackjack />,
   roulette: () => <Roulette />,
@@ -52,6 +56,7 @@ const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = 
   braquage: () => <Braquage />,
   boosters: () => <Boosters />,
   cases: () => <Cases />,
+  pmu: () => <Pmu />,
   bonus: () => <Bonus />,
   rewards: () => <Rewards />,
   leaderboard: () => <Leaderboard />,
@@ -108,11 +113,13 @@ export default function App() {
       const unsubscribeJackpot = subscribeJackpot();
       const unsubscribeFeed = subscribeGlobalFeed();
       const unsubscribeCasino = useCasinoStore.subscribe(() => useCasinoStore.getState().syncToCloud(account.id));
+      const unsubscribeGifts = useGiftsStore.getState().subscribe(account.id);
       return () => {
         unsubscribeStatus();
         unsubscribeJackpot();
         unsubscribeFeed();
         unsubscribeCasino();
+        unsubscribeGifts();
       };
     }
     stopPresence();

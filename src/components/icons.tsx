@@ -86,3 +86,9 @@ export const IconMenu = (p: SVGProps<SVGSVGElement>) => (
 export const IconCrate = (p: SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><path d="M3 8l9-4.5L21 8v8l-9 4.5L3 16Z" /><path d="M3 8l9 4.5L21 8M12 12.5V21" /></svg>
 );
+export const IconGamepad = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><rect x="2.5" y="7" width="19" height="11" rx="5.5" /><path d="M7 9.5v5M4.5 12h5" /><circle cx="15.5" cy="10.5" r="1" fill="currentColor" /><circle cx="18" cy="13" r="1" fill="currentColor" /></svg>
+);
+export const IconTicketBet = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4Z" /><path d="M9 6v12" strokeDasharray="2 2" /></svg>
+);

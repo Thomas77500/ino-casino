@@ -32,6 +32,9 @@ create policy "casino_progress_update_admin" on public.casino_progress for updat
 insert into public.game_status (id, enabled, message) values ('cases', true, '')
 on conflict (id) do nothing;
 
+insert into public.game_status (id, enabled, message) values ('pmu', true, '')
+on conflict (id) do nothing;
+
 -- ============================================================================
 -- Realtime — the leaderboard refetches live on any new signup or progress change
 -- ============================================================================

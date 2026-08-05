@@ -2,18 +2,38 @@ import { useEffect, useState } from "react";
 import { useFriendsStore } from "../store/friendsStore";
 import { usePresenceStore } from "../store/presenceStore";
 import { useToastStore } from "../store/toastStore";
+import { useGiftsStore } from "../store/giftsStore";
+import { useCasinoStore } from "../store/casinoStore";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { IconUsers } from "../components/icons";
-import { cn } from "../lib/format";
+import { cn, formatCredits } from "../lib/format";
 
 export function Friends() {
   const { friends, incoming, outgoing, loading, fetchAll, sendRequest, accept, decline, remove, subscribe } = useFriendsStore();
   const onlineIds = usePresenceStore((s) => s.onlineIds);
   const push = useToastStore((s) => s.push);
+  const sendGift = useGiftsStore((s) => s.sendGift);
+  const credits = useCasinoStore((s) => s.credits);
   const [search, setSearch] = useState("");
   const [sending, setSending] = useState(false);
+  const [giftTargetId, setGiftTargetId] = useState<string | null>(null);
+  const [giftAmount, setGiftAmount] = useState("");
+  const [giftSending, setGiftSending] = useState(false);
+
+  async function handleGift(toUserId: string) {
+    const amount = Number(giftAmount);
+    if (!amount || amount <= 0) return;
+    setGiftSending(true);
+    const result = await sendGift(toUserId, amount);
+    setGiftSending(false);
+    push({ kind: result.ok ? "success" : "info", title: result.message });
+    if (result.ok) {
+      setGiftTargetId(null);
+      setGiftAmount("");
+    }
+  }
 
   useEffect(() => {
     fetchAll();
@@ -101,19 +121,44 @@ export function Friends() {
           <ul className="flex flex-col gap-3">
             {friends.map((friend) => {
               const online = onlineIds.has(friend.id);
+              const isGifting = giftTargetId === friend.id;
               return (
-                <li key={friend.friendshipId} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="relative text-xl">
-                      {friend.avatar}
-                      <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-ink-950", online ? "bg-emerald-400" : "bg-ice-200/20")} />
-                    </span>
-                    <span className="text-sm font-medium text-white">{friend.username}</span>
-                    {online && <Badge tone="success">En ligne</Badge>}
+                <li key={friend.friendshipId} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="relative text-xl">
+                        {friend.avatar}
+                        <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-ink-950", online ? "bg-emerald-400" : "bg-ice-200/20")} />
+                      </span>
+                      <span className="text-sm font-medium text-white">{friend.username}</span>
+                      {online && <Badge tone="success">En ligne</Badge>}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="gold" onClick={() => setGiftTargetId(isGifting ? null : friend.id)}>
+                        🎁 Don
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => remove(friend.friendshipId)} className="text-ice-200/40">
+                        Retirer
+                      </Button>
+                    </div>
                   </div>
-                  <Button size="sm" variant="ghost" onClick={() => remove(friend.friendshipId)} className="text-ice-200/40">
-                    Retirer
-                  </Button>
+                  {isGifting && (
+                    <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-3">
+                      <input
+                        type="number"
+                        min={1}
+                        max={credits}
+                        placeholder="Montant"
+                        value={giftAmount}
+                        onChange={(e) => setGiftAmount(e.target.value)}
+                        className="input w-32"
+                      />
+                      <Button size="sm" disabled={giftSending || !giftAmount} onClick={() => handleGift(friend.id)}>
+                        Envoyer
+                      </Button>
+                      <span className="text-[11px] text-ice-200/40">Solde : {formatCredits(credits)}</span>
+                    </div>
+                  )}
                 </li>
               );
             })}
