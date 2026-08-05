@@ -27,6 +27,10 @@ export function AuthGate() {
   const [referrer, setReferrer] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  // Anti-bot: a field real users never see or fill, plus a minimum time-to-submit — catches the
+  // vast majority of scripted signups without any external CAPTCHA service or user friction.
+  const [honeypot, setHoneypot] = useState("");
+  const [formOpenedAt] = useState(() => Date.now());
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -35,6 +39,10 @@ export function AuthGate() {
 
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
+    if (honeypot.trim() || Date.now() - formOpenedAt < 1500) {
+      useAuthStore.setState({ error: "Réessaie dans un instant." });
+      return;
+    }
     if (password !== confirmPassword) {
       useAuthStore.setState({ error: "Les mots de passe ne correspondent pas." });
       return;
@@ -84,6 +92,16 @@ export function AuthGate() {
 
           {mode === "signup" ? (
             <form onSubmit={handleSignUp} className="flex flex-col gap-4">
+              <input
+                type="text"
+                name="website"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                className="absolute left-[-9999px] h-0 w-0 opacity-0"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+              />
               <Field label="Pseudo">
                 <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ex. LuckyPlayer" className="input" />
               </Field>

@@ -13,7 +13,10 @@ import { xpForPayout } from "../lib/xp";
 import { CASES, RARITY_LABEL, RARITY_STYLE, drawItem, randomDecoyItem, type DrawnItem, type CaseDef } from "../lib/caseEngine";
 import { tierFromMultiplier, type WinTier } from "../lib/winTiers";
 
-const ITEM_WIDTH = 128; // px, includes gap — fixed regardless of screen width, the strip scrolls inside an overflow-hidden viewport
+const ITEM_WIDTH = 128; // px (w-32) — fixed regardless of screen width, the strip scrolls inside an overflow-hidden viewport
+const ITEM_GAP = 8; // px, matches the track's `gap-2`
+const TRACK_PAD = 8; // px, matches the track's `px-2` leading padding
+const ITEM_STEP = ITEM_WIDTH + ITEM_GAP; // real distance between two cards' left edges
 const REEL_LENGTH = 60;
 const WINNING_INDEX = 50;
 const SPIN_DURATION = 5.5;
@@ -75,7 +78,7 @@ export function Cases() {
 
     const containerWidth = trackRef.current?.parentElement?.getBoundingClientRect().width ?? 320;
     const jitter = (Math.random() - 0.5) * (ITEM_WIDTH * 0.6); // land slightly off-center, more organic
-    const target = -(WINNING_INDEX * ITEM_WIDTH + ITEM_WIDTH / 2 - containerWidth / 2) + jitter;
+    const target = -(TRACK_PAD + WINNING_INDEX * ITEM_STEP + ITEM_WIDTH / 2 - containerWidth / 2) + jitter;
     setOffset(0);
     requestAnimationFrame(() => setOffset(target));
     setSpinning(true);

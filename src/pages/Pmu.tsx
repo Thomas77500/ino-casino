@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useCasinoStore } from "../store/casinoStore";
 import { useToastStore } from "../store/toastStore";
@@ -8,6 +8,8 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { BetInput } from "../components/ui/BetInput";
 import { WinCelebration } from "../components/ui/WinCelebration";
+import { ProgressBar } from "../components/ui/ProgressBar";
+import { RoomChat } from "../components/ui/RoomChat";
 import { IconTicketBet } from "../components/icons";
 import { formatCredits, cn } from "../lib/format";
 import { maxBetFor } from "../lib/betting";
@@ -16,10 +18,11 @@ import {
   HORSES, raceWinner, type Horse,
   LOTO_POOL_SIZE, LOTO_PICK_COUNT, LOTO_TICKET_PRICE, drawLoto, type LotoResult,
   EURO_MAIN_POOL, EURO_MAIN_COUNT, EURO_STAR_POOL, EURO_STAR_COUNT, EURO_TICKET_PRICE, drawEuromillions, type EuroResult,
+  DRINKS, DRUNKENNESS_MAX, DRUNKENNESS_DECAY_PER_TICK, drunkennessGain, drunkBiasMultiplier, drunkennessTier, type Drink,
 } from "../lib/pmuEngine";
 import { tierFromMultiplier, type WinTier } from "../lib/winTiers";
 
-type View = "chevaux" | "loto" | "euromillions";
+type View = "chevaux" | "loto" | "euromillions" | "bar";
 
 function useResolveRound() {
   const award = useCasinoStore((s) => s.award);
@@ -80,40 +83,102 @@ function quickPick(pool: number, count: number): number[] {
 export function Pmu() {
   const [view, setView] = useState<View>("chevaux");
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
+  const [drunkenness, setDrunkenness] = useState(0);
+  const credits = useCasinoStore((s) => s.credits);
+  const placeBet = useCasinoStore((s) => s.placeBet);
+  const push = useToastStore((s) => s.push);
+
+  // Sobers up on its own over time — the bonus/malus is a temporary session buzz, not something
+  // to stack forever.
+  useEffect(() => {
+    if (drunkenness <= 0) return;
+    const t = setInterval(() => setDrunkenness((d) => Math.max(0, d - DRUNKENNESS_DECAY_PER_TICK)), 8000);
+    return () => clearInterval(t);
+  }, [drunkenness]);
+
+  function drink(d: Drink) {
+    if (credits < d.price) {
+      push({ kind: "info", title: "Crédits insuffisants" });
+      return;
+    }
+    placeBet(d.price);
+    setDrunkenness((cur) => Math.min(DRUNKENNESS_MAX, cur + drunkennessGain(d)));
+    push({ kind: "success", title: `${d.glyph} ${d.name} — santé !` });
+  }
+
+  const blur = drunkenness > 20 ? Math.min(3, drunkenness / 30) : 0;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
-      <div className="mb-6 flex items-center justify-between gap-4">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6" style={blur > 0 ? { filter: `blur(${blur}px) saturate(1.3)`, transition: "filter 1s ease" } : undefined}>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <IconTicketBet className="h-6 w-6 text-gold-400" />
           <div>
             <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">Bar PMU</h1>
-            <p className="text-sm text-ice-200/60">Courses de chevaux, Loto et Euromillions fictifs.</p>
+            <p className="text-sm text-ice-200/60">Courses de chevaux, Loto, Euromillions et quelques verres entre potes.</p>
           </div>
         </div>
         <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
-          {(["chevaux", "loto", "euromillions"] as View[]).map((v) => (
+          {(["chevaux", "loto", "euromillions", "bar"] as View[]).map((v) => (
             <button key={v} onClick={() => setView(v)} className={cn("rounded-lg px-3 py-1.5 text-xs font-semibold capitalize", view === v ? "bg-electric-500 text-white" : "text-ice-200/60")}>
-              {v === "chevaux" ? "Chevaux" : v === "loto" ? "Loto" : "Euromillions"}
+              {v === "chevaux" ? "Chevaux" : v === "loto" ? "Loto" : v === "euromillions" ? "Euromillions" : "Bar"}
             </button>
           ))}
         </div>
       </div>
 
-      {view === "chevaux" && <Chevaux onCelebrate={(tier, payout) => setCelebration({ tier, payout })} />}
-      {view === "loto" && <Loto onCelebrate={(tier, payout) => setCelebration({ tier, payout })} />}
-      {view === "euromillions" && <Euromillions onCelebrate={(tier, payout) => setCelebration({ tier, payout })} />}
+      {view === "chevaux" && <Chevaux drunkenness={drunkenness} onCelebrate={(tier, payout) => setCelebration({ tier, payout })} />}
+      {view === "loto" && <Loto drunkenness={drunkenness} onCelebrate={(tier, payout) => setCelebration({ tier, payout })} />}
+      {view === "euromillions" && <Euromillions drunkenness={drunkenness} onCelebrate={(tier, payout) => setCelebration({ tier, payout })} />}
+      {view === "bar" && <Bar drunkenness={drunkenness} onDrink={drink} />}
 
       <WinCelebration tier={celebration?.tier ?? "none"} payout={celebration?.payout ?? 0} onClose={() => setCelebration(null)} />
     </div>
   );
 }
 
-function Chevaux({ onCelebrate }: { onCelebrate: (tier: WinTier, payout: number) => void }) {
+function Bar({ drunkenness, onDrink }: { drunkenness: number; onDrink: (d: Drink) => void }) {
+  const credits = useCasinoStore((s) => s.credits);
+  const tier = drunkennessTier(drunkenness);
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Card className="p-4 sm:p-6" glow>
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-white">{tier.emoji} {tier.label}</p>
+            <ProgressBar value={drunkenness} max={100} className="mt-2" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {DRINKS.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => onDrink(d)}
+              disabled={credits < d.price}
+              className="flex flex-col items-center gap-1 rounded-xl border border-white/10 p-3 transition-colors hover:border-white/20 disabled:opacity-40"
+            >
+              <span className="text-2xl">{d.glyph}</span>
+              <span className="text-xs font-semibold text-white">{d.name}</span>
+              <span className="text-[11px] text-ice-200/40">{d.degree}° — {formatCredits(d.price)}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-4 text-[11px] text-ice-200/40">
+          Chaque verre te fait un peu plus tourner la tête (vision floue) mais te porte un peu chance sur les paris — jusqu'à +25% aux courses, au Loto et à l'Euromillions. Ça redescend tout seul.
+        </p>
+      </Card>
+
+      <RoomChat table="pmu_messages" title="Parler avec les Dédé" />
+    </div>
+  );
+}
+
+function Chevaux({ drunkenness, onCelebrate }: { drunkenness: number; onCelebrate: (tier: WinTier, payout: number) => void }) {
   const credits = useCasinoStore((s) => s.credits);
   const level = useCasinoStore((s) => s.level);
   const placeBet = useCasinoStore((s) => s.placeBet);
-  const winBias = useGameStatusStore((s) => s.statuses.pmu?.winBias ?? 1);
+  const winBias = useGameStatusStore((s) => s.statuses.pmu?.winBias ?? 1) * drunkBiasMultiplier(drunkenness);
   const resolve = useResolveRound();
   const maxBet = maxBetFor(credits, level);
 
@@ -122,6 +187,7 @@ function Chevaux({ onCelebrate }: { onCelebrate: (tier: WinTier, payout: number)
   const [racing, setRacing] = useState(false);
   const [winner, setWinner] = useState<Horse | null>(null);
   const [positions, setPositions] = useState<Record<string, number>>({});
+  const [raceKey, setRaceKey] = useState(0);
 
   function race() {
     if (!selected || racing || credits < bet) return;
@@ -134,6 +200,9 @@ function Chevaux({ onCelebrate }: { onCelebrate: (tier: WinTier, payout: number)
     HORSES.forEach((h) => {
       finalPositions[h.id] = h.id === theWinner.id ? 92 : 55 + Math.random() * 30;
     });
+    // Bump the key first so the horses remount fresh at the starting gate instead of animating
+    // backwards from wherever the last race left them off.
+    setRaceKey((k) => k + 1);
     setPositions({});
     requestAnimationFrame(() => setPositions(finalPositions));
 
@@ -154,8 +223,9 @@ function Chevaux({ onCelebrate }: { onCelebrate: (tier: WinTier, payout: number)
           {HORSES.map((h) => (
             <div key={h.id} className="relative h-8">
               <motion.span
+                key={raceKey}
                 className="absolute text-2xl"
-                style={{ left: `${positions[h.id] ?? 0}%` }}
+                initial={{ left: "0%" }}
                 animate={{ left: `${positions[h.id] ?? 0}%` }}
                 transition={{ duration: 2.4, ease: "easeOut" }}
               >
@@ -200,9 +270,9 @@ function Chevaux({ onCelebrate }: { onCelebrate: (tier: WinTier, payout: number)
   );
 }
 
-function Loto({ onCelebrate }: { onCelebrate: (tier: WinTier, payout: number) => void }) {
+function Loto({ drunkenness, onCelebrate }: { drunkenness: number; onCelebrate: (tier: WinTier, payout: number) => void }) {
   const credits = useCasinoStore((s) => s.credits);
-  const winBias = useGameStatusStore((s) => s.statuses.pmu?.winBias ?? 1);
+  const winBias = useGameStatusStore((s) => s.statuses.pmu?.winBias ?? 1) * drunkBiasMultiplier(drunkenness);
   const placeBet = useCasinoStore((s) => s.placeBet);
   const resolve = useResolveRound();
 
@@ -263,9 +333,9 @@ function Loto({ onCelebrate }: { onCelebrate: (tier: WinTier, payout: number) =>
   );
 }
 
-function Euromillions({ onCelebrate }: { onCelebrate: (tier: WinTier, payout: number) => void }) {
+function Euromillions({ drunkenness, onCelebrate }: { drunkenness: number; onCelebrate: (tier: WinTier, payout: number) => void }) {
   const credits = useCasinoStore((s) => s.credits);
-  const winBias = useGameStatusStore((s) => s.statuses.pmu?.winBias ?? 1);
+  const winBias = useGameStatusStore((s) => s.statuses.pmu?.winBias ?? 1) * drunkBiasMultiplier(drunkenness);
   const placeBet = useCasinoStore((s) => s.placeBet);
   const resolve = useResolveRound();
 

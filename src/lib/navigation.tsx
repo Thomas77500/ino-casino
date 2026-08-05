@@ -61,13 +61,13 @@ export const GAMES: { id: AppTab; label: string; icon: ComponentType<SVGProps<SV
   { id: "braquage", label: "Braquage", icon: IconVaultDoor, blurb: "Choisis ton butin, évite les alarmes, extrais-toi à temps.", tag: "Nouveau" },
   { id: "boosters", label: "Boosters", icon: IconPack, blurb: "Ouvre des boosters ou des displays, révèle et vends tes cartes.", tag: "Collection" },
   { id: "cases", label: "Caisses", icon: IconCrate, blurb: "Ouvre une caisse, l'objet tiré s'échange contre des crédits.", tag: "Nouveau" },
-  { id: "pmu", label: "Bar PMU", icon: IconTicketBet, blurb: "Courses de chevaux, Loto et Euromillions fictifs.", tag: "Nouveau" },
   { id: "bourse", label: "Bourse", icon: IconTrendUp, blurb: "Mise à la hausse ou à la baisse — débloqué à 100M de gains cumulés.", tag: "Secret" },
 ];
 
 export const TABS: { id: AppTab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; adminOnly?: boolean }[] = [
   { id: "home", label: "Accueil", icon: IconHome },
   { id: "games", label: "Jeux", icon: IconGamepad },
+  { id: "pmu", label: "Bar PMU", icon: IconTicketBet },
   { id: "bonus", label: "Bonus", icon: IconGift },
   { id: "rewards", label: "Récompenses", icon: IconTrophy },
   { id: "leaderboard", label: "Classement", icon: IconTrophy },

@@ -8,6 +8,7 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { IconDoor } from "../components/icons";
+import { RoomChat } from "../components/ui/RoomChat";
 import { AvatarBubble } from "../components/ui/AvatarBubble";
 import { cn } from "../lib/format";
 
@@ -22,89 +23,6 @@ interface Message {
   userId: string;
   content: string;
   createdAt: string;
-}
-
-interface LobbyMessage {
-  id: string;
-  userId: string;
-  username: string;
-  avatar: string;
-  content: string;
-}
-
-function LobbyChat() {
-  const account = useAuthStore((s) => s.account);
-  const [messages, setMessages] = useState<LobbyMessage[]>([]);
-  const [draft, setDraft] = useState("");
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      const { data } = await supabase
-        .from("lobby_messages")
-        .select("id, user_id, content, profile:profiles(username, avatar)")
-        .order("created_at", { ascending: true })
-        .limit(50);
-      if (cancelled || !data) return;
-      setMessages(
-        (data as any[]).map((r) => ({ id: r.id, userId: r.user_id, content: r.content, username: r.profile?.username ?? "?", avatar: r.profile?.avatar ?? "🎲" }))
-      );
-    }
-    load();
-
-    const channel = supabase
-      .channel("lobby-messages")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "lobby_messages" }, async (payload) => {
-        const r = payload.new as any;
-        const { data: profile } = await supabase.from("profiles").select("username, avatar").eq("id", r.user_id).maybeSingle();
-        setMessages((prev) => [...prev, { id: r.id, userId: r.user_id, content: r.content, username: profile?.username ?? "?", avatar: profile?.avatar ?? "🎲" }]);
-      })
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
-
-  async function send(e: React.FormEvent) {
-    e.preventDefault();
-    if (!draft.trim() || !account) return;
-    const content = draft.trim();
-    setDraft("");
-    await supabase.from("lobby_messages").insert({ user_id: account.id, content });
-  }
-
-  return (
-    <Card className="mb-6 flex flex-col p-4" glow>
-      <h2 className="mb-3 font-display text-sm font-semibold text-white">Chat public</h2>
-      <div ref={scrollRef} className="mb-3 flex h-60 flex-col gap-2 overflow-y-auto">
-        {messages.length === 0 && <p className="text-xs text-ice-200/40">Aucun message pour l'instant — dis bonjour !</p>}
-        {messages.map((m) => {
-          const isMe = m.userId === account?.id;
-          return (
-            <div key={m.id} className={cn("flex max-w-[85%] items-end gap-2", isMe ? "self-end flex-row-reverse" : "self-start")}>
-              <AvatarBubble avatar={m.avatar} size="sm" />
-              <div className={cn("rounded-xl px-3 py-2 text-sm", isMe ? "bg-electric-500/20 text-white" : "bg-white/[0.05] text-ice-200/90")}>
-                {!isMe && <p className="mb-0.5 text-[11px] font-semibold text-electric-400">{m.username}</p>}
-                {m.content}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <form onSubmit={send} className="flex gap-2">
-        <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Écrire un message..." className="input" maxLength={500} />
-        <Button type="submit" disabled={!draft.trim()}>Envoyer</Button>
-      </form>
-    </Card>
-  );
 }
 
 export function Salons() {
@@ -269,7 +187,9 @@ export function Salons() {
         </div>
       </div>
 
-      <LobbyChat />
+      <div className="mb-6">
+        <RoomChat table="lobby_messages" title="Chat public" />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card className="p-5">

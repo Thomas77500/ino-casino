@@ -112,3 +112,50 @@ export function drawEuromillions(mainPicks: number[], starPicks: number[], bias 
   const starMatches = countMatches(starPicks, drawStars);
   return { drawMain, drawStars, mainMatches, starMatches, multiplier: euroMultiplier(mainMatches, starMatches) };
 }
+
+// ============================================================================
+// Bar — drinking raises a local drunkenness meter (0-100, decays over time). It's a bonus/malus
+// trade-off: a modest luck boost applied on top of the admin win-bias for every PMU bet, paid for
+// with a purely cosmetic screen blur — never lets a player break the RTP tuning above, since the
+// boost is capped at +25% and decays on its own.
+// ============================================================================
+export interface Drink {
+  id: string;
+  name: string;
+  glyph: string;
+  degree: number; // ABV%, flavor + drives how much the meter climbs
+  price: number;
+}
+
+export const DRINKS: Drink[] = [
+  { id: "biere", name: "Bière", glyph: "🍺", degree: 5, price: 40 },
+  { id: "cidre", name: "Cidre", glyph: "🍏", degree: 4, price: 35 },
+  { id: "vodka", name: "Vodka", glyph: "🥃", degree: 40, price: 120 },
+  { id: "rhumcoco", name: "Rhum Coco", glyph: "🥥", degree: 35, price: 110 },
+  { id: "whisky", name: "Whisky", glyph: "🧉", degree: 40, price: 125 },
+  { id: "tequila", name: "Tequila", glyph: "🌵", degree: 38, price: 115 },
+];
+
+export const DRUNKENNESS_MAX = 100;
+export const DRUNKENNESS_DECAY_PER_TICK = 1;
+
+export function drunkennessGain(drink: Drink): number {
+  return drink.degree * 1.5;
+}
+
+// The luck boost applied on top of the admin win-bias while drunk — capped at +25%.
+export function drunkBiasMultiplier(drunkenness: number): number {
+  return 1 + Math.min(drunkenness, DRUNKENNESS_MAX) / 400;
+}
+
+export interface DrunkTier {
+  label: string;
+  emoji: string;
+}
+
+export function drunkennessTier(drunkenness: number): DrunkTier {
+  if (drunkenness < 20) return { label: "Sobre", emoji: "🙂" };
+  if (drunkenness < 45) return { label: "Pompette", emoji: "😊" };
+  if (drunkenness < 75) return { label: "Ivre", emoji: "🥴" };
+  return { label: "Complètement bourré", emoji: "🤪" };
+}
