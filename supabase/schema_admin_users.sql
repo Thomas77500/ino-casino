@@ -9,6 +9,7 @@
 -- ============================================================================
 alter table public.profiles add column if not exists banned boolean not null default false;
 
+drop policy if exists "profiles_update_admin" on public.profiles;
 create policy "profiles_update_admin" on public.profiles for update
   to authenticated using (exists (select 1 from public.admins where user_id = auth.uid()));
 
@@ -23,6 +24,7 @@ drop policy if exists "casino_progress_select_all" on public.casino_progress;
 create policy "casino_progress_select_all" on public.casino_progress for select
   to authenticated using (true);
 
+drop policy if exists "casino_progress_update_admin" on public.casino_progress;
 create policy "casino_progress_update_admin" on public.casino_progress for update
   to authenticated using (exists (select 1 from public.admins where user_id = auth.uid()));
 
@@ -36,7 +38,16 @@ insert into public.game_status (id, enabled, message) values ('pmu', true, '')
 on conflict (id) do nothing;
 
 -- ============================================================================
--- Realtime — the leaderboard refetches live on any new signup or progress change
+-- Realtime — the leaderboard refetches live on any new signup or progress change.
+-- Guarded so re-running this whole file never aborts partway through if a previous attempt
+-- already added one of these tables (`alter publication ... add table` has no IF NOT EXISTS).
 -- ============================================================================
-alter publication supabase_realtime add table public.profiles;
-alter publication supabase_realtime add table public.casino_progress;
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'profiles') then
+    alter publication supabase_realtime add table public.profiles;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'casino_progress') then
+    alter publication supabase_realtime add table public.casino_progress;
+  end if;
+end $$;
