@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { Card } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { AvatarBubble } from "../components/ui/AvatarBubble";
+import { PublicProfileModal } from "../components/ui/PublicProfileModal";
 import { IconTrophy } from "../components/icons";
 import { formatCredits, cn } from "../lib/format";
 import { displayLevel } from "../lib/levelTitles";
@@ -51,6 +52,7 @@ export function Leaderboard() {
   const account = useAuthStore((s) => s.account);
   const [players, setPlayers] = useState<RankedPlayer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewingId, setViewingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,11 +108,13 @@ export function Leaderboard() {
                   >
                     {i + 1}
                   </span>
-                  <AvatarBubble avatar={p.avatar} frame={p.frame} size="sm" />
-                  <div className="flex-1">
-                    <p className={cn("text-sm font-semibold", isUser ? "text-white" : "text-ice-200/90")}>{p.name}</p>
-                    <p className="text-xs text-ice-200/40">Niveau {displayLevel(p.level)}</p>
-                  </div>
+                  <button onClick={() => setViewingId(p.id)} className="flex flex-1 items-center gap-3 text-left">
+                    <AvatarBubble avatar={p.avatar} frame={p.frame} size="sm" />
+                    <div className="flex-1">
+                      <p className={cn("text-sm font-semibold hover:underline", isUser ? "text-white" : "text-ice-200/90")}>{p.name}</p>
+                      <p className="text-xs text-ice-200/40">Niveau {displayLevel(p.level)}</p>
+                    </div>
+                  </button>
                   {isUser && <Badge tone="electric">Toi</Badge>}
                   <span className="font-display text-sm font-bold text-gold-400">{formatCredits(p.won)}</span>
                 </li>
@@ -119,6 +123,8 @@ export function Leaderboard() {
           </ul>
         )}
       </Card>
+
+      <PublicProfileModal userId={viewingId} onClose={() => setViewingId(null)} />
     </div>
   );
 }

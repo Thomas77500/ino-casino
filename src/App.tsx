@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useAuthStore } from "./store/authStore";
 import { useCasinoStore } from "./store/casinoStore";
@@ -22,26 +22,29 @@ import { GATED_GAME_IDS, type AppTab } from "./lib/navigation";
 import { supabase } from "./lib/supabase";
 import { Home } from "./pages/Home";
 import { Games } from "./pages/Games";
-import { Slots } from "./pages/Slots";
-import { Blackjack } from "./pages/Blackjack";
-import { Roulette } from "./pages/Roulette";
-import { ChickenRoad } from "./pages/ChickenRoad";
-import { Plinko } from "./pages/Plinko";
-import { Crash } from "./pages/Crash";
-import { ScratchCards } from "./pages/ScratchCards";
-import { Bourse } from "./pages/Bourse";
-import { Braquage } from "./pages/Braquage";
-import { Boosters } from "./pages/Boosters";
-import { Cases } from "./pages/Cases";
-import { Pmu } from "./pages/Pmu";
-import { Bonus } from "./pages/Bonus";
-import { Rewards } from "./pages/Rewards";
-import { Leaderboard } from "./pages/Leaderboard";
-import { Shop } from "./pages/Shop";
-import { Friends } from "./pages/Friends";
-import { Salons } from "./pages/Salons";
-import { Profile } from "./pages/Profile";
-import { Admin } from "./pages/Admin";
+
+// Code-split every other page — each game/section only loads when a player actually opens it,
+// instead of all ~20 pages landing in one bundle on first paint.
+const Slots = lazy(() => import("./pages/Slots").then((m) => ({ default: m.Slots })));
+const Blackjack = lazy(() => import("./pages/Blackjack").then((m) => ({ default: m.Blackjack })));
+const Roulette = lazy(() => import("./pages/Roulette").then((m) => ({ default: m.Roulette })));
+const ChickenRoad = lazy(() => import("./pages/ChickenRoad").then((m) => ({ default: m.ChickenRoad })));
+const Plinko = lazy(() => import("./pages/Plinko").then((m) => ({ default: m.Plinko })));
+const Crash = lazy(() => import("./pages/Crash").then((m) => ({ default: m.Crash })));
+const ScratchCards = lazy(() => import("./pages/ScratchCards").then((m) => ({ default: m.ScratchCards })));
+const Bourse = lazy(() => import("./pages/Bourse").then((m) => ({ default: m.Bourse })));
+const Braquage = lazy(() => import("./pages/Braquage").then((m) => ({ default: m.Braquage })));
+const Boosters = lazy(() => import("./pages/Boosters").then((m) => ({ default: m.Boosters })));
+const Cases = lazy(() => import("./pages/Cases").then((m) => ({ default: m.Cases })));
+const Pmu = lazy(() => import("./pages/Pmu").then((m) => ({ default: m.Pmu })));
+const Bonus = lazy(() => import("./pages/Bonus").then((m) => ({ default: m.Bonus })));
+const Rewards = lazy(() => import("./pages/Rewards").then((m) => ({ default: m.Rewards })));
+const Leaderboard = lazy(() => import("./pages/Leaderboard").then((m) => ({ default: m.Leaderboard })));
+const Shop = lazy(() => import("./pages/Shop").then((m) => ({ default: m.Shop })));
+const Friends = lazy(() => import("./pages/Friends").then((m) => ({ default: m.Friends })));
+const Salons = lazy(() => import("./pages/Salons").then((m) => ({ default: m.Salons })));
+const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
+const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
 
 const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = {
   home: (onNavigate) => <Home onNavigate={onNavigate} />,
@@ -162,13 +165,25 @@ export default function App() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25 }}
           >
-            {inMaintenance ? <MaintenanceScreen message={status!.message} /> : PAGES[tab](navigate)}
+            {inMaintenance ? (
+              <MaintenanceScreen message={status!.message} />
+            ) : (
+              <Suspense fallback={<PageLoading />}>{PAGES[tab](navigate)}</Suspense>
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
       {tab === "home" && <Footer />}
       <MobileNav active={tab} open={navOpen} onNavigate={navigate} onClose={() => setNavOpen(false)} />
       <WinCelebration tier={celebration.tier} payout={celebration.payout} onClose={celebration.clear} game={celebration.game} />
+    </div>
+  );
+}
+
+function PageLoading() {
+  return (
+    <div className="grid place-items-center py-24">
+      <Logo className="h-10 w-10 animate-pulse-glow rounded-xl" />
     </div>
   );
 }

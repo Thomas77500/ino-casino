@@ -7,6 +7,7 @@ import { useCasinoStore } from "../store/casinoStore";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
+import { PublicProfileModal } from "../components/ui/PublicProfileModal";
 import { IconUsers } from "../components/icons";
 import { cn, formatCredits } from "../lib/format";
 
@@ -21,6 +22,7 @@ export function Friends() {
   const [giftTargetId, setGiftTargetId] = useState<string | null>(null);
   const [giftAmount, setGiftAmount] = useState("");
   const [giftSending, setGiftSending] = useState(false);
+  const [viewingId, setViewingId] = useState<string | null>(null);
 
   async function handleGift(toUserId: string) {
     const amount = Number(giftAmount);
@@ -125,14 +127,14 @@ export function Friends() {
               return (
                 <li key={friend.friendshipId} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                    <button onClick={() => setViewingId(friend.id)} className="flex items-center gap-2 text-left">
                       <span className="relative text-xl">
                         {friend.avatar}
                         <span className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-ink-950", online ? "bg-emerald-400" : "bg-ice-200/20")} />
                       </span>
-                      <span className="text-sm font-medium text-white">{friend.username}</span>
+                      <span className="text-sm font-medium text-white hover:underline">{friend.username}</span>
                       {online && <Badge tone="success">En ligne</Badge>}
-                    </div>
+                    </button>
                     <div className="flex gap-2">
                       <Button size="sm" variant="gold" onClick={() => setGiftTargetId(isGifting ? null : friend.id)}>
                         🎁 Don
@@ -165,6 +167,8 @@ export function Friends() {
           </ul>
         )}
       </Card>
+
+      <PublicProfileModal userId={viewingId} onClose={() => setViewingId(null)} />
     </div>
   );
 }
