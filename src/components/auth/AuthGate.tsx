@@ -5,6 +5,7 @@ import { useCasinoStore } from "../../store/casinoStore";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
+import { Logo } from "../ui/Logo";
 import { AVATAR_OPTIONS } from "../../lib/avatars";
 import { cn } from "../../lib/format";
 import { IconEye, IconEyeOff } from "../icons";
@@ -67,9 +68,7 @@ export function AuthGate() {
 
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="relative w-full max-w-md">
         <div className="mb-6 flex flex-col items-center gap-3 text-center">
-          <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-electric-400 to-electric-600 shadow-glow">
-            <span className="font-display text-xl font-bold text-white">I</span>
-          </div>
+          <Logo className="h-12 w-12 shadow-glow rounded-xl" />
           <h1 className="font-display text-2xl font-bold text-white">Ino Casino</h1>
           <Badge tone="gold">100% crédits virtuels — aucun argent réel</Badge>
         </div>

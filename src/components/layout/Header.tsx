@@ -7,6 +7,7 @@ import { useJackpotStore } from "../../store/jackpotStore";
 import { TABS, type AppTab } from "../../lib/navigation";
 import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { AvatarBubble } from "../ui/AvatarBubble";
+import { Logo } from "../ui/Logo";
 import { Button } from "../ui/Button";
 import { IconCoin, IconGift, IconVaultDoor, IconMenu } from "../icons";
 import { cn } from "../../lib/format";
@@ -43,9 +44,7 @@ export function Header({ active, onNavigate, onMenuClick }: { active: AppTab; on
         </button>
 
         <button onClick={() => onNavigate("home")} className="flex items-center gap-2 shrink-0">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-electric-400 to-electric-600 shadow-glow">
-            <span className="font-display text-lg font-bold text-white">I</span>
-          </div>
+          <Logo className="h-9 w-9 shadow-glow rounded-xl" />
           <span className="font-display text-lg font-bold tracking-tight text-white hidden sm:inline">Ino Casino</span>
         </button>
 

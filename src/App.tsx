@@ -16,6 +16,7 @@ import { ToastHost } from "./components/ui/ToastHost";
 import { LuckyHourBanner } from "./components/ui/LuckyHourBanner";
 import { WinCelebration } from "./components/ui/WinCelebration";
 import { Card } from "./components/ui/Card";
+import { Logo } from "./components/ui/Logo";
 import { IconLock } from "./components/icons";
 import { GATED_GAME_IDS, type AppTab } from "./lib/navigation";
 import { supabase } from "./lib/supabase";
@@ -136,9 +137,7 @@ export default function App() {
   if (initializing) {
     return (
       <div className="grid min-h-screen place-items-center bg-ink-950">
-        <div className="grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-electric-400 to-electric-600 shadow-glow animate-pulse-glow">
-          <span className="font-display text-xl font-bold text-white">I</span>
-        </div>
+        <Logo className="h-12 w-12 shadow-glow rounded-xl animate-pulse-glow" />
       </div>
     );
   }
