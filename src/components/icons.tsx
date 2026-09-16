@@ -101,3 +101,9 @@ export const IconBell = (p: SVGProps<SVGSVGElement>) => (
 export const IconChartBar = (p: SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><path d="M4 20V10M11 20V4M18 20v-7" /><path d="M2.5 20h19" /></svg>
 );
+export const IconFootball = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><circle cx="12" cy="12" r="9" /><path d="M12 8.2 15 10l-1.2 3.5H10.2L9 10Z" /><path d="M12 3v5.2M9.7 20.3l.5-6.8M13.8 20.3l-.5-6.8M4.3 8.7l4.7 1.3M19.7 8.7 15 10" /></svg>
+);
+export const IconWasher = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><rect x="4" y="3" width="16" height="18" rx="2" /><circle cx="12" cy="13" r="5" /><circle cx="12" cy="13" r="1.6" /><circle cx="7" cy="6" r="0.6" fill="currentColor" /><circle cx="10" cy="6" r="0.6" fill="currentColor" /></svg>
+);

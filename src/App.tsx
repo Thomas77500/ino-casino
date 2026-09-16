@@ -41,6 +41,8 @@ const Boosters = lazy(() => import("./pages/Boosters").then((m) => ({ default: m
 const Cases = lazy(() => import("./pages/Cases").then((m) => ({ default: m.Cases })));
 const Pmu = lazy(() => import("./pages/Pmu").then((m) => ({ default: m.Pmu })));
 const Ministry = lazy(() => import("./pages/Ministry").then((m) => ({ default: m.Ministry })));
+const Club = lazy(() => import("./pages/Club").then((m) => ({ default: m.Club })));
+const Laundering = lazy(() => import("./pages/Laundering").then((m) => ({ default: m.Laundering })));
 const Bonus = lazy(() => import("./pages/Bonus").then((m) => ({ default: m.Bonus })));
 const Rewards = lazy(() => import("./pages/Rewards").then((m) => ({ default: m.Rewards })));
 const Leaderboard = lazy(() => import("./pages/Leaderboard").then((m) => ({ default: m.Leaderboard })));
@@ -66,6 +68,8 @@ const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = 
   cases: () => <Cases />,
   pmu: () => <Pmu />,
   ministry: () => <Ministry />,
+  club: () => <Club />,
+  laundering: () => <Laundering />,
   bonus: () => <Bonus />,
   rewards: () => <Rewards />,
   leaderboard: () => <Leaderboard />,

@@ -22,6 +22,8 @@ import {
   IconGamepad,
   IconTicketBet,
   IconMinistry,
+  IconFootball,
+  IconWasher,
 } from "../components/icons";
 
 export type AppTab =
@@ -40,6 +42,8 @@ export type AppTab =
   | "cases"
   | "pmu"
   | "ministry"
+  | "club"
+  | "laundering"
   | "bonus"
   | "rewards"
   | "leaderboard"
@@ -61,10 +65,12 @@ export const GAMES: { id: AppTab; label: string; icon: ComponentType<SVGProps<SV
   { id: "crash", label: "Crash", icon: IconRocket, blurb: "Encaisse avant l'explosion — plus tu attends, plus ça paie.", tag: "Nouveau" },
   { id: "scratch", label: "Cartes à gratter", icon: IconTicket, blurb: "3 symboles identiques sur la grille et c'est gagné.", tag: "Nouveau" },
   { id: "braquage", label: "Braquage", icon: IconVaultDoor, blurb: "Choisis ton butin, évite les alarmes, extrais-toi à temps.", tag: "Nouveau" },
+  { id: "laundering", label: "Blanchiment", icon: IconWasher, blurb: "Choisis ta couverture, extrais l'argent avant le contrôle fiscal.", tag: "Nouveau" },
   { id: "boosters", label: "Boosters", icon: IconPack, blurb: "Ouvre des boosters ou des displays, révèle et vends tes cartes.", tag: "Collection" },
   { id: "cases", label: "Caisses", icon: IconCrate, blurb: "Ouvre une caisse, l'objet tiré s'échange contre des crédits.", tag: "Nouveau" },
   { id: "bourse", label: "Bourse", icon: IconTrendUp, blurb: "Mise à la hausse ou à la baisse — débloqué à 100M de gains cumulés.", tag: "Secret" },
   { id: "ministry", label: "Ministère", icon: IconMinistry, blurb: "Roulette de nomination puis mandat de 5 ans — débloqué à 25M de gains cumulés.", tag: "Secret" },
+  { id: "club", label: "Président de Club", icon: IconFootball, blurb: "Roulette de reprise puis présidence de 5 saisons — débloqué à 35M de gains cumulés.", tag: "Secret" },
 ];
 
 export const TABS: { id: AppTab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; adminOnly?: boolean }[] = [
@@ -96,4 +102,6 @@ export const GATED_GAME_IDS: Partial<Record<AppTab, string>> = {
   cases: "cases",
   pmu: "pmu",
   ministry: "ministry",
+  club: "club",
+  laundering: "laundering",
 };
