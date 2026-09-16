@@ -12,7 +12,7 @@ import { IconUsers } from "../components/icons";
 import { cn, formatCredits } from "../lib/format";
 
 export function Friends() {
-  const { friends, incoming, outgoing, loading, fetchAll, sendRequest, accept, decline, remove, subscribe } = useFriendsStore();
+  const { friends, incoming, outgoing, loading, fetchAll, sendRequest, accept, decline, remove } = useFriendsStore();
   const onlineIds = usePresenceStore((s) => s.onlineIds);
   const push = useToastStore((s) => s.push);
   const sendGift = useGiftsStore((s) => s.sendGift);
@@ -39,8 +39,6 @@ export function Friends() {
 
   useEffect(() => {
     fetchAll();
-    const unsubscribe = subscribe();
-    return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

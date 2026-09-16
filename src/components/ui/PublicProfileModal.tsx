@@ -7,6 +7,7 @@ import { formatCredits } from "../../lib/format";
 import { Modal } from "./Modal";
 import { Badge } from "./Badge";
 import { AvatarBubble } from "./AvatarBubble";
+import { StatTile } from "./StatTile";
 
 interface PublicProfile {
   username: string;
@@ -80,9 +81,9 @@ export function PublicProfileModal({ userId, onClose }: { userId: string | null;
           <p className="text-sm text-ice-200/60">Niveau {displayLevel(data.level)}</p>
 
           <div className="grid w-full grid-cols-3 gap-2">
-            <MiniStat label="Total gagné" value={formatCredits(data.totalWon)} />
-            <MiniStat label="Total misé" value={formatCredits(data.totalWagered)} />
-            <MiniStat label="Plus gros gain" value={formatCredits(data.biggestWin)} />
+            <StatTile label="Total gagné" value={formatCredits(data.totalWon)} />
+            <StatTile label="Total misé" value={formatCredits(data.totalWagered)} />
+            <StatTile label="Plus gros gain" value={formatCredits(data.biggestWin)} />
           </div>
 
           <div className="w-full text-left">
@@ -97,14 +98,5 @@ export function PublicProfileModal({ userId, onClose }: { userId: string | null;
         </div>
       )}
     </Modal>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 text-center">
-      <p className="text-[10px] uppercase tracking-wide text-ice-200/40">{label}</p>
-      <p className="mt-0.5 font-display text-sm font-bold text-white">{value}</p>
-    </div>
   );
 }

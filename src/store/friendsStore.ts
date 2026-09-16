@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { useAuthStore } from "./authStore";
+import { sendNotification } from "./notificationStore";
 
 export interface FriendProfile {
   friendshipId: string;
@@ -127,13 +128,29 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     if (!me) return () => {};
 
     const channels: RealtimeChannel[] = [
+      // My outgoing request just got accepted — notify self, named after the addressee.
       supabase
         .channel(`friendships-requester:${me}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "friendships", filter: `requester=eq.${me}` }, () => get().fetchAll())
+        .on("postgres_changes", { event: "*", schema: "public", table: "friendships", filter: `requester=eq.${me}` }, async (payload) => {
+          get().fetchAll();
+          const row = payload.new as { status?: string; addressee?: string } | null;
+          if (payload.eventType === "UPDATE" && row?.status === "accepted" && row.addressee) {
+            const { data: profile } = await supabase.from("profiles").select("username").eq("id", row.addressee).maybeSingle();
+            sendNotification(me, "friend_accept", `🤝 ${profile?.username ?? "Un joueur"} a accepté ta demande d'ami`);
+          }
+        })
         .subscribe(),
+      // A new incoming request just landed — notify self, named after the requester.
       supabase
         .channel(`friendships-addressee:${me}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "friendships", filter: `addressee=eq.${me}` }, () => get().fetchAll())
+        .on("postgres_changes", { event: "*", schema: "public", table: "friendships", filter: `addressee=eq.${me}` }, async (payload) => {
+          get().fetchAll();
+          const row = payload.new as { status?: string; requester?: string } | null;
+          if (payload.eventType === "INSERT" && row?.status === "pending" && row.requester) {
+            const { data: profile } = await supabase.from("profiles").select("username").eq("id", row.requester).maybeSingle();
+            sendNotification(me, "friend_request", `👋 Nouvelle demande d'ami de ${profile?.username ?? "un joueur"}`);
+          }
+        })
         .subscribe(),
     ];
 

@@ -8,6 +8,8 @@ import { useJackpotStore } from "./store/jackpotStore";
 import { useCelebrationStore } from "./store/celebrationStore";
 import { useGlobalFeedStore } from "./store/globalFeedStore";
 import { useGiftsStore } from "./store/giftsStore";
+import { useFriendsStore } from "./store/friendsStore";
+import { useNotificationStore } from "./store/notificationStore";
 import { AuthGate } from "./components/auth/AuthGate";
 import { ResetPasswordScreen } from "./components/auth/ResetPasswordScreen";
 import { Header } from "./components/layout/Header";
@@ -117,21 +119,27 @@ export default function App() {
       fetchJackpot();
       claimPendingReferrals(account.id);
       useCasinoStore.getState().hydrateFromCloud(account.id);
+      useNotificationStore.getState().fetchAll(account.id);
       const unsubscribeStatus = subscribeGameStatuses();
       const unsubscribeJackpot = subscribeJackpot();
       const unsubscribeFeed = subscribeGlobalFeed();
       const unsubscribeCasino = useCasinoStore.subscribe(() => useCasinoStore.getState().syncToCloud(account.id));
       const unsubscribeGifts = useGiftsStore.getState().subscribe(account.id);
+      const unsubscribeNotifications = useNotificationStore.getState().subscribe(account.id);
+      const unsubscribeFriends = useFriendsStore.getState().subscribe();
       return () => {
         unsubscribeStatus();
         unsubscribeJackpot();
         unsubscribeFeed();
         unsubscribeCasino();
         unsubscribeGifts();
+        unsubscribeNotifications();
+        unsubscribeFriends();
       };
     }
     stopPresence();
     resetGameStatus();
+    useNotificationStore.getState().reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, account?.id]);
 

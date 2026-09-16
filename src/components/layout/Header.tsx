@@ -9,6 +9,7 @@ import { AnimatedNumber } from "../ui/AnimatedNumber";
 import { AvatarBubble } from "../ui/AvatarBubble";
 import { Logo } from "../ui/Logo";
 import { Button } from "../ui/Button";
+import { NotificationBell } from "./NotificationBell";
 import { IconCoin, IconGift, IconVaultDoor, IconMenu } from "../icons";
 import { cn } from "../../lib/format";
 import { levelTitle, displayLevel } from "../../lib/levelTitles";
@@ -81,6 +82,8 @@ export function Header({ active, onNavigate, onMenuClick }: { active: AppTab; on
             <IconGift className="h-4 w-4" />
             {canClaimDaily ? "Bonus du jour" : "Réclamé"}
           </Button>
+
+          <NotificationBell />
 
           <button
             onClick={() => onNavigate("profile")}

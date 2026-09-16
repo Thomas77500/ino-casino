@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGameStatusStore, GAME_LABELS } from "../store/gameStatusStore";
+import { usePresenceStore } from "../store/presenceStore";
 import { useToastStore } from "../store/toastStore";
 import { supabase } from "../lib/supabase";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { AvatarBubble } from "../components/ui/AvatarBubble";
-import { IconShield } from "../components/icons";
+import { StatTile } from "../components/ui/StatTile";
+import { IconShield, IconChartBar } from "../components/icons";
 import { formatCredits } from "../lib/format";
 
 interface AdminUser {
@@ -18,6 +20,8 @@ interface AdminUser {
   credits: number;
   level: number;
   totalWon: number;
+  totalWagered: number;
+  gamesPlayed: Partial<Record<string, number>>;
 }
 
 async function fetchUsers(): Promise<AdminUser[]> {
@@ -40,6 +44,8 @@ async function fetchUsers(): Promise<AdminUser[]> {
         credits: state.credits ?? 0,
         level: state.level ?? 1,
         totalWon: state.totalWon ?? 0,
+        totalWagered: state.totalWagered ?? 0,
+        gamesPlayed: state.gamesPlayed ?? {},
       };
     })
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -47,6 +53,7 @@ async function fetchUsers(): Promise<AdminUser[]> {
 
 export function Admin() {
   const { statuses, isAdmin, fetchAll, setStatus } = useGameStatusStore();
+  const onlineIds = usePresenceStore((s) => s.onlineIds);
   const push = useToastStore((s) => s.push);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [biasDrafts, setBiasDrafts] = useState<Record<string, number>>({});
@@ -61,6 +68,23 @@ export function Admin() {
     refreshUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const stats = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 86_400_000;
+    const gamesPlayedTotals: Record<string, number> = {};
+    let totalCredits = 0, totalWagered = 0, totalWon = 0, recentSignups = 0;
+    for (const u of users) {
+      totalCredits += u.credits;
+      totalWagered += u.totalWagered;
+      totalWon += u.totalWon;
+      if (new Date(u.createdAt).getTime() >= weekAgo) recentSignups++;
+      for (const [game, count] of Object.entries(u.gamesPlayed)) {
+        gamesPlayedTotals[game] = (gamesPlayedTotals[game] ?? 0) + (count ?? 0);
+      }
+    }
+    const topGames = Object.entries(gamesPlayedTotals).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    return { totalCredits, totalWagered, totalWon, recentSignups, topGames };
+  }, [users]);
 
   function refreshUsers() {
     setUsersLoading(true);
@@ -134,6 +158,41 @@ export function Admin() {
           <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">Administration</h1>
           <p className="text-sm text-ice-200/60">Active/désactive chaque jeu et personnalise le message de maintenance.</p>
         </div>
+      </div>
+
+      <div className="mb-8">
+        <div className="mb-3 flex items-center gap-2">
+          <IconChartBar className="h-5 w-5 text-electric-400" />
+          <h2 className="font-display text-lg font-bold text-white">Vue d'ensemble</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatTile label="Joueurs inscrits" value={String(users.length)} />
+          <StatTile label="En ligne maintenant" value={String(onlineIds.size)} />
+          <StatTile label="Inscrits (7 derniers jours)" value={String(stats.recentSignups)} />
+          <StatTile label="Comptes bannis" value={String(users.filter((u) => u.banned).length)} />
+          <StatTile label="Crédits en circulation" value={formatCredits(stats.totalCredits)} />
+          <StatTile label="Total misé (cumulé)" value={formatCredits(stats.totalWagered)} />
+          <StatTile label="Total gagné (cumulé)" value={formatCredits(stats.totalWon)} />
+        </div>
+        {stats.topGames.length > 0 && (
+          <Card className="mt-3 p-4">
+            <p className="mb-3 text-xs font-medium uppercase tracking-wide text-ice-200/50">Jeux les plus joués (parties cumulées)</p>
+            <div className="flex flex-col gap-2">
+              {stats.topGames.map(([game, count]) => {
+                const max = stats.topGames[0][1];
+                return (
+                  <div key={game} className="flex items-center gap-3">
+                    <span className="w-28 shrink-0 truncate text-xs text-ice-200/70">{game}</span>
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-gradient-to-r from-electric-500 to-electric-400" style={{ width: `${(count / max) * 100}%` }} />
+                    </div>
+                    <span className="w-10 shrink-0 text-right text-xs font-semibold text-white">{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
       </div>
 
       <div className="flex flex-col gap-3">

@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useCasinoStore } from "./casinoStore";
 import { useToastStore } from "./toastStore";
 import { useFriendsStore } from "./friendsStore";
+import { sendNotification } from "./notificationStore";
 
 interface GiftsState {
   sending: boolean;
@@ -40,6 +41,7 @@ export const useGiftsStore = create<GiftsState>((set) => ({
         useCasinoStore.setState((s) => ({ credits: s.credits + amount }));
         const senderName = useFriendsStore.getState().friends.find((f) => f.id === senderId)?.username ?? "Un joueur";
         useToastStore.getState().push({ kind: "bonus", title: `🎁 ${senderName} t'a envoyé ${amount} crédits !` });
+        sendNotification(myId, "gift", `🎁 Don reçu de ${senderName}`, `+${amount} crédits`);
       })
       .subscribe();
     return () => supabase.removeChannel(channel);

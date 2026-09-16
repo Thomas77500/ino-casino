@@ -95,3 +95,9 @@ export const IconTicketBet = (p: SVGProps<SVGSVGElement>) => (
 export const IconMinistry = (p: SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><path d="M3.5 9.5 12 4l8.5 5.5" /><rect x="4" y="10" width="16" height="8" rx="1" /><path d="M7 10v8M11 10v8M13 10v8M17 10v8" /><path d="M2.5 19.5h19" /></svg>
 );
+export const IconBell = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M6 10a6 6 0 1 1 12 0c0 4 1.5 5.5 2 6.5H4c.5-1 2-2.5 2-6.5Z" /><path d="M10 20a2 2 0 0 0 4 0" /></svg>
+);
+export const IconChartBar = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M4 20V10M11 20V4M18 20v-7" /><path d="M2.5 20h19" /></svg>
+);

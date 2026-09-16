@@ -9,6 +9,7 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { ProgressBar } from "../components/ui/ProgressBar";
+import { StatTile } from "../components/ui/StatTile";
 import { RoomChat } from "../components/ui/RoomChat";
 import { WinCelebration } from "../components/ui/WinCelebration";
 import { IconMinistry, IconLock } from "../components/icons";
@@ -62,15 +63,6 @@ const CATEGORY_TONE: Record<MandateEvent["category"], "danger" | "gold" | "elect
   vote: "success",
   election: "gold",
 };
-
-function MiniStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 text-center">
-      <p className="text-[10px] uppercase tracking-wide text-ice-200/40">{label}</p>
-      <p className="mt-0.5 font-display text-sm font-bold text-white">{value}</p>
-    </div>
-  );
-}
 
 function ReelTile({ ministry }: { ministry: MinistryDef }) {
   return (
@@ -494,8 +486,8 @@ export function Ministry() {
               <p className="mt-1 text-sm text-ice-200/60">{result.ministry.label}</p>
               {result.ministry.tier > 0 && (
                 <div className="mx-auto mt-4 grid max-w-xs grid-cols-2 gap-2">
-                  <MiniStat label="Popularité finale" value={`${result.popularity}/100`} />
-                  <MiniStat label="Trésorerie" value={`${result.treasury >= 0 ? "+" : ""}${result.treasury}`} />
+                  <StatTile label="Popularité finale" value={`${result.popularity}/100`} />
+                  <StatTile label="Trésorerie" value={`${result.treasury >= 0 ? "+" : ""}${result.treasury}`} />
                 </div>
               )}
               <p className="mt-4 font-display text-2xl font-bold text-gold-400">+{formatCredits(result.payout)}</p>
