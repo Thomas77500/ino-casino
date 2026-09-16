@@ -132,6 +132,7 @@ export default function App() {
       const unsubscribeJackpot = subscribeJackpot();
       const unsubscribeFeed = subscribeGlobalFeed();
       const unsubscribeCasino = useCasinoStore.subscribe(() => useCasinoStore.getState().syncToCloud(account.id));
+      const unsubscribeCasinoCloud = useCasinoStore.getState().subscribeToCloud(account.id);
       const unsubscribeGifts = useGiftsStore.getState().subscribe(account.id);
       const unsubscribeNotifications = useNotificationStore.getState().subscribe(account.id);
       const unsubscribeFriends = useFriendsStore.getState().subscribe();
@@ -140,6 +141,7 @@ export default function App() {
         unsubscribeJackpot();
         unsubscribeFeed();
         unsubscribeCasino();
+        unsubscribeCasinoCloud();
         unsubscribeGifts();
         unsubscribeNotifications();
         unsubscribeFriends();

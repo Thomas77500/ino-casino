@@ -38,7 +38,8 @@ export const useGiftsStore = create<GiftsState>((set) => ({
         const amount = Number((payload.new as { amount?: number }).amount ?? 0);
         const senderId = (payload.new as { sender?: string }).sender;
         if (amount <= 0) return;
-        useCasinoStore.setState((s) => ({ credits: s.credits + amount }));
+        // The actual credit bump is applied by casinoStore's own casino_progress subscription
+        // (single source of truth for out-of-band credit changes) — this handler is toast/notification only.
         const senderName = useFriendsStore.getState().friends.find((f) => f.id === senderId)?.username ?? "Un joueur";
         useToastStore.getState().push({ kind: "bonus", title: `🎁 ${senderName} t'a envoyé ${amount} crédits !` });
         sendNotification(myId, "gift", `🎁 Don reçu de ${senderName}`, `+${amount} crédits`);

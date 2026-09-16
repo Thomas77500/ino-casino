@@ -7,6 +7,7 @@ import { MAX_LEVEL } from "../lib/levelTitles";
 import { rollMysteryReward } from "../lib/mysteryBox";
 import { isLuckyHourNow, LUCKY_HOUR_BONUS_RATE } from "../lib/luckyHour";
 import { useJackpotStore } from "./jackpotStore";
+import { useToastStore } from "./toastStore";
 import { supabase } from "../lib/supabase";
 
 export interface HistoryEntry {
@@ -84,11 +85,15 @@ interface CasinoState {
   claimMission: (id: string) => number;
   hydrateFromCloud: (userId: string) => Promise<void>;
   syncToCloud: (userId: string) => void;
+  subscribeToCloud: (userId: string) => () => void;
 }
 
 // Debounce handle for cloud sync — module-scope since the store is a singleton, not part of the
-// persisted state itself.
+// persisted state itself. `lastSyncedCredits` tracks the credits value baked into the most recent
+// push so subscribeToCloud can tell "this update just echoed my own push" apart from "someone else
+// (admin grant, a gift, a marketplace sale...) changed my credits out-of-band" — see subscribeToCloud.
 let syncTimer: ReturnType<typeof setTimeout> | undefined;
+let lastSyncedCredits: number | undefined;
 
 export const useCasinoStore = create<CasinoState>()(
   persist(
@@ -258,7 +263,15 @@ export const useCasinoStore = create<CasinoState>()(
 
         if (remote && remoteProgress >= localProgress) {
           set(remote);
+          lastSyncedCredits = remote.credits;
         } else {
+          // Local is ahead on progress (this device has unsynced play), but credits specifically
+          // can move out-of-band — an admin grant, a gift, a marketplace sale — without touching
+          // totalWagered/totalWon at all. Always trust remote's credits even while otherwise
+          // pushing local up, so a grant made while this device was offline never gets clobbered.
+          const credits = remote?.credits ?? get().credits;
+          set({ credits });
+          lastSyncedCredits = credits;
           await supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: new Date().toISOString() });
         }
       },
@@ -266,8 +279,36 @@ export const useCasinoStore = create<CasinoState>()(
       syncToCloud: (userId) => {
         clearTimeout(syncTimer);
         syncTimer = setTimeout(() => {
+          lastSyncedCredits = get().credits;
           supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: new Date().toISOString() });
         }, 1500);
+      },
+
+      // Mirrors this player's OWN casino_progress row live, so any credit change made from outside
+      // this client — an admin grant (Admin.tsx's adjustCredits), a gift (send_gift), a marketplace
+      // sale (buy_blackmarket_listing) — lands immediately instead of getting silently overwritten
+      // by the next debounced syncToCloud push (which only knows about local state). This was the
+      // real cause behind admin credit grants and gifts appearing to do nothing for an online
+      // player: the grant landed in the DB, then the player's own next bet pushed their
+      // stale local credits right back over it a second later.
+      //
+      // `lastSyncedCredits` distinguishes a genuine external change from the echo of our own push:
+      // if the incoming value matches what we just pushed, it's our own write coming back — ignore it.
+      subscribeToCloud: (userId) => {
+        const channel = supabase
+          .channel(`casino-progress-own:${userId}`)
+          .on("postgres_changes", { event: "*", schema: "public", table: "casino_progress", filter: `user_id=eq.${userId}` }, (payload) => {
+            const remote = (payload.new as { state?: Partial<CasinoState> } | undefined)?.state;
+            const remoteCredits = remote?.credits;
+            if (remoteCredits === undefined || remoteCredits === lastSyncedCredits) return;
+            lastSyncedCredits = remoteCredits;
+            const delta = remoteCredits - get().credits;
+            if (delta === 0) return;
+            set({ credits: remoteCredits });
+            if (delta > 0) useToastStore.getState().push({ kind: "bonus", title: `💰 Crédits ajustés — +${delta}` });
+          })
+          .subscribe();
+        return () => supabase.removeChannel(channel);
       },
     }),
     { name: "ino-casino-store" }

@@ -47,6 +47,9 @@ const GLYPHS: Record<string, string> = {
   montre: "🕰️", vin: "🍷", passeport: "🛂", lingot: "🪙", statuette: "🗿", vermeer: "🖼️", cle: "🗝️", registre: "📕",
   ragot: "🗣️", ticket: "🧾", audio: "🎙️", carnet: "📓", audit: "📊", offshore: "🏝️", dossier: "📁", lanceur: "🔐",
   vpn: "🌐", bot: "⭐", phishing: "🎣", ransomware: "🦠", bdd: "🗄️", deepfake: "🎭", rugpull: "📉", source: "💾",
+  cigares: "🚬", caisse: "📦", icone: "🕉️", carteTresor: "🗺️",
+  rumeur: "🤫", sms: "📱", interview: "🎤", releve: "💳",
+  extension: "🧩", captcha: "🤖", cracker: "🔓", zeroday: "🐛",
 };
 
 export const COLLECTIONS: BlackmarketCollection[] = [
@@ -66,6 +69,10 @@ export const COLLECTIONS: BlackmarketCollection[] = [
       ["vermeer", "Faux Vermeer (Copie Parfaite)", "rareHolo"],
       ["cle", "Clé du Coffre Numéro 7", "ultraRare"],
       ["registre", "Le Registre du Receleur", "secrete"],
+      ["cigares", "Cigares Cubains \"Authentiques\"", "commune"],
+      ["caisse", "Caisse de Douane Égarée", "commune"],
+      ["icone", "Icône Religieuse Volée", "peuCommune"],
+      ["carteTresor", "Carte au Trésor (Photocopie)", "rare"],
     ]),
   },
   {
@@ -84,6 +91,10 @@ export const COLLECTIONS: BlackmarketCollection[] = [
       ["offshore", "Liste de Comptes Offshore (Partielle)", "rareHolo"],
       ["dossier", "Dossier Compromettant d'un Élu Anonyme", "ultraRare"],
       ["lanceur", "La Clé du Lanceur d'Alerte", "secrete"],
+      ["rumeur", "Rumeur de Vestiaire", "commune"],
+      ["sms", "SMS Mal Effacé", "commune"],
+      ["interview", "Interview Non-Publiée", "peuCommune"],
+      ["releve", "Relevé Bancaire Suspect", "rare"],
     ]),
   },
   {
@@ -102,6 +113,10 @@ export const COLLECTIONS: BlackmarketCollection[] = [
       ["deepfake", "Générateur de Deepfake Amateur", "rareHolo"],
       ["rugpull", "Script de Rug-Pull Crypto (Buggé)", "ultraRare"],
       ["source", "Le Code Source Perdu", "secrete"],
+      ["extension", "Extension Navigateur Louche", "commune"],
+      ["captcha", "Générateur de Faux CAPTCHA", "commune"],
+      ["cracker", "Cracker de Mot de Passe (Lent)", "peuCommune"],
+      ["zeroday", "Exploit Zero-Day (Périmé)", "rare"],
     ]),
   },
 ];

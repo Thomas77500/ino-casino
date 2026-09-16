@@ -16,6 +16,13 @@ create table if not exists public.darktable_rounds (
   created_at timestamptz not null default now()
 );
 
+-- Several round formats now share this one table instead of Crash running on repeat: `game_type`
+-- picks the format, `crash_point` stays Crash's growth target (now nullable — unused by the other
+-- formats), `outcome` holds roulette's winning number (0-36) or dice's roll (0-100).
+alter table public.darktable_rounds add column if not exists game_type text not null default 'crash';
+alter table public.darktable_rounds add column if not exists outcome numeric;
+alter table public.darktable_rounds alter column crash_point drop not null;
+
 alter table public.darktable_rounds enable row level security;
 
 drop policy if exists "darktable_rounds_select_all" on public.darktable_rounds;
@@ -40,6 +47,12 @@ create table if not exists public.darktable_bets (
   payout bigint,
   created_at timestamptz not null default now()
 );
+
+-- Roulette/dice bets carry a `choice` (e.g. "rouge"/"sous") picked before reveal instead of a
+-- cash-out action; a winning bet still gets its multiplier/payout written into the two columns
+-- above (self-write, same as Crash's cash-out), a losing one is simply left null forever — the
+-- existing "still null when the round ended = lost" convention already covers it, no extra state needed.
+alter table public.darktable_bets add column if not exists choice text;
 
 alter table public.darktable_bets enable row level security;
 

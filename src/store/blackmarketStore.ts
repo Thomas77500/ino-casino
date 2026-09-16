@@ -88,7 +88,8 @@ export const useBlackmarketStore = create<BlackmarketState>((set, get) => ({
         get().fetchListings();
         const row = payload.new as any;
         if (payload.eventType === "UPDATE" && row?.status === "sold" && row?.seller_id === userId) {
-          useCasinoStore.setState((s) => ({ credits: s.credits + Number(row.price ?? 0) }));
+          // The actual credit bump is applied by casinoStore's own casino_progress subscription
+          // (single source of truth for out-of-band credit changes) — this handler is toast/notification only.
           useToastStore.getState().push({ kind: "success", title: `💰 Annonce vendue — +${row.price} crédits` });
           sendNotification(userId, "blackmarket_sale", "💰 Annonce vendue", `Ton objet a trouvé preneur pour ${row.price} crédits.`);
         }

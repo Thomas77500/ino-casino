@@ -2,18 +2,29 @@ import { create } from "zustand";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { rollCrashPoint, timeForMultiplier } from "../lib/crashEngine";
+import { rollGameType, rollRouletteNumber, rollDiceOutcome, REVEAL_WINDOW_MS, type DarktableGameType } from "../lib/darktableGames";
 
 // La table clandestine est unique et partagée par tout le monde (pas de salons multiples) — le
 // premier arbitrage produit demandé pour le multijoueur. Chaque manche est vue par tous les
-// clients à partir des mêmes `crash_point`/`starts_at` : voir schema_darktable.sql pour le détail
-// du modèle de confiance (identique à tous les autres RNG de ce casino, résolus côté client).
+// clients à partir des mêmes données de résolution/`starts_at` : voir schema_darktable.sql pour le
+// détail du modèle de confiance (identique à tous les autres RNG de ce casino, résolus côté client).
+// Les manches tournent entre plusieurs formats (Crash, Roulette, Dés) au lieu de ne servir que du Crash.
 export const BETTING_WINDOW_MS = 12_000;
 const END_DISPLAY_MS = 4_000;
 
 export interface DarktableRound {
   id: string;
-  crashPoint: number;
+  gameType: DarktableGameType;
+  crashPoint: number | null;
+  outcome: number | null;
   startsAt: number; // epoch ms
+}
+
+// Le temps entre l'ouverture des mises et la résolution de la manche dépend du format : Crash a
+// une courbe de croissance variable (déterminée par sa cible), les autres formats ont une durée
+// d'animation fixe.
+export function roundDurationMs(round: Pick<DarktableRound, "gameType" | "crashPoint">): number {
+  return round.gameType === "crash" ? timeForMultiplier(round.crashPoint ?? 1) : REVEAL_WINDOW_MS;
 }
 
 export interface DarktableBet {
@@ -22,6 +33,7 @@ export interface DarktableBet {
   username: string;
   avatar: string;
   amount: number;
+  choice: string | null;
   cashedOutMultiplier: number | null;
   payout: number | null;
 }
@@ -39,14 +51,20 @@ interface DarktableState {
 
   ensureRound: (bias?: number) => Promise<void>;
   fetchBets: (roundId: string) => Promise<void>;
-  placeBet: (userId: string, username: string, avatar: string, amount: number) => Promise<string | null>;
+  placeBet: (userId: string, username: string, avatar: string, amount: number, choice?: string | null) => Promise<string | null>;
   cashOutBet: (betId: string, multiplier: number, payout: number) => Promise<void>;
   subscribe: (userId: string, username: string, avatar: string) => () => void;
   reset: () => void;
 }
 
 function mapRound(r: any): DarktableRound {
-  return { id: r.id, crashPoint: Number(r.crash_point), startsAt: new Date(r.starts_at).getTime() };
+  return {
+    id: r.id,
+    gameType: (r.game_type ?? "crash") as DarktableGameType,
+    crashPoint: r.crash_point === null || r.crash_point === undefined ? null : Number(r.crash_point),
+    outcome: r.outcome === null || r.outcome === undefined ? null : Number(r.outcome),
+    startsAt: new Date(r.starts_at).getTime(),
+  };
 }
 
 function mapBet(r: any): DarktableBet {
@@ -56,6 +74,7 @@ function mapBet(r: any): DarktableBet {
     username: r.profile?.username ?? "Joueur",
     avatar: r.profile?.avatar ?? "🎲",
     amount: r.amount,
+    choice: r.choice ?? null,
     cashedOutMultiplier: r.cashed_out_multiplier === null ? null : Number(r.cashed_out_multiplier),
     payout: r.payout,
   };
@@ -74,20 +93,28 @@ export const useDarktableStore = create<DarktableState>((set, get) => ({
   // its course, rolls a fresh crash point and schedules the next start a few seconds out so latecomers
   // have time to see the betting window open.
   ensureRound: async (bias = 1) => {
-    const { data } = await supabase.from("darktable_rounds").select("id, crash_point, starts_at").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const { data } = await supabase.from("darktable_rounds").select("id, game_type, crash_point, outcome, starts_at").order("created_at", { ascending: false }).limit(1).maybeSingle();
     const now = Date.now();
     if (data) {
       const round = mapRound(data);
-      const endsAt = round.startsAt + timeForMultiplier(round.crashPoint) + END_DISPLAY_MS;
+      const endsAt = round.startsAt + roundDurationMs(round) + END_DISPLAY_MS;
       if (now < endsAt) {
         set({ round });
         get().fetchBets(round.id);
         return;
       }
     }
-    const crashPoint = rollCrashPoint(bias);
+    // Bias only makes sense for Crash's single growth curve — roulette/dice are shared draws with
+    // many simultaneous bettors on both sides, so there's no single "player" to bias for or against.
+    const gameType = rollGameType();
+    const crashPoint = gameType === "crash" ? rollCrashPoint(bias) : null;
+    const outcome = gameType === "roulette" ? rollRouletteNumber() : gameType === "dice" ? rollDiceOutcome() : null;
     const startsAt = new Date(now + BETTING_WINDOW_MS).toISOString();
-    const { data: created } = await supabase.from("darktable_rounds").insert({ crash_point: crashPoint, starts_at: startsAt }).select("id, crash_point, starts_at").single();
+    const { data: created } = await supabase
+      .from("darktable_rounds")
+      .insert({ game_type: gameType, crash_point: crashPoint, outcome, starts_at: startsAt })
+      .select("id, game_type, crash_point, outcome, starts_at")
+      .single();
     if (created) {
       const round = mapRound(created);
       set({ round, bets: [] });
@@ -97,22 +124,22 @@ export const useDarktableStore = create<DarktableState>((set, get) => ({
   fetchBets: async (roundId) => {
     const { data } = await supabase
       .from("darktable_bets")
-      .select("id, user_id, amount, cashed_out_multiplier, payout, profile:profiles(username, avatar)")
+      .select("id, user_id, amount, choice, cashed_out_multiplier, payout, profile:profiles(username, avatar)")
       .eq("round_id", roundId)
       .order("created_at", { ascending: true });
     set({ bets: (data ?? []).map(mapBet) });
   },
 
-  placeBet: async (userId, username, avatar, amount) => {
+  placeBet: async (userId, username, avatar, amount, choice = null) => {
     const round = get().round;
     if (!round) return null;
     const { data, error } = await supabase
       .from("darktable_bets")
-      .insert({ round_id: round.id, user_id: userId, amount })
+      .insert({ round_id: round.id, user_id: userId, amount, choice })
       .select("id")
       .single();
     if (error || !data) return null;
-    set((s) => ({ bets: [...s.bets, { id: data.id, userId, username, avatar, amount, cashedOutMultiplier: null, payout: null }] }));
+    set((s) => ({ bets: [...s.bets, { id: data.id, userId, username, avatar, amount, choice, cashedOutMultiplier: null, payout: null }] }));
     return data.id;
   },
 
