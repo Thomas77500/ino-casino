@@ -21,6 +21,7 @@ import {
   IconCrate,
   IconGamepad,
   IconTicketBet,
+  IconMinistry,
 } from "../components/icons";
 
 export type AppTab =
@@ -38,6 +39,7 @@ export type AppTab =
   | "boosters"
   | "cases"
   | "pmu"
+  | "ministry"
   | "bonus"
   | "rewards"
   | "leaderboard"
@@ -62,6 +64,7 @@ export const GAMES: { id: AppTab; label: string; icon: ComponentType<SVGProps<SV
   { id: "boosters", label: "Boosters", icon: IconPack, blurb: "Ouvre des boosters ou des displays, révèle et vends tes cartes.", tag: "Collection" },
   { id: "cases", label: "Caisses", icon: IconCrate, blurb: "Ouvre une caisse, l'objet tiré s'échange contre des crédits.", tag: "Nouveau" },
   { id: "bourse", label: "Bourse", icon: IconTrendUp, blurb: "Mise à la hausse ou à la baisse — débloqué à 100M de gains cumulés.", tag: "Secret" },
+  { id: "ministry", label: "Ministère", icon: IconMinistry, blurb: "Roulette de nomination puis mandat de 5 ans — débloqué à 25M de gains cumulés.", tag: "Secret" },
 ];
 
 export const TABS: { id: AppTab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; adminOnly?: boolean }[] = [
@@ -92,4 +95,5 @@ export const GATED_GAME_IDS: Partial<Record<AppTab, string>> = {
   boosters: "boosters",
   cases: "cases",
   pmu: "pmu",
+  ministry: "ministry",
 };

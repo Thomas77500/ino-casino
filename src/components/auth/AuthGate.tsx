@@ -10,11 +10,12 @@ import { AVATAR_OPTIONS } from "../../lib/avatars";
 import { cn } from "../../lib/format";
 import { IconEye, IconEyeOff } from "../icons";
 
-type Mode = "login" | "signup";
+type Mode = "login" | "signup" | "forgot";
 
 export function AuthGate() {
   const signUp = useAuthStore((s) => s.signUp);
   const login = useAuthStore((s) => s.login);
+  const requestPasswordReset = useAuthStore((s) => s.requestPasswordReset);
   const error = useAuthStore((s) => s.error);
   const loading = useAuthStore((s) => s.loading);
   const clearError = useAuthStore((s) => s.clearError);
@@ -28,6 +29,9 @@ export function AuthGate() {
   const [referrer, setReferrer] = useState("");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState<string | null>(null);
+  const [forgotLoading, setForgotLoading] = useState(false);
   // Anti-bot: a field real users never see or fill, plus a minimum time-to-submit — catches the
   // vast majority of scripted signups without any external CAPTCHA service or user friction.
   const [honeypot, setHoneypot] = useState("");
@@ -36,6 +40,7 @@ export function AuthGate() {
   function switchMode(next: Mode) {
     setMode(next);
     clearError();
+    setForgotSent(null);
   }
 
   async function handleSignUp(e: React.FormEvent) {
@@ -57,6 +62,15 @@ export function AuthGate() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     await login({ email: loginEmail, password: loginPassword });
+  }
+
+  async function handleForgot(e: React.FormEvent) {
+    e.preventDefault();
+    setForgotLoading(true);
+    const result = await requestPasswordReset(forgotEmail);
+    setForgotLoading(false);
+    if (result.ok) setForgotSent(result.message);
+    else useAuthStore.setState({ error: result.message });
   }
 
   return (
@@ -83,7 +97,7 @@ export function AuthGate() {
             </button>
             <button
               onClick={() => switchMode("login")}
-              className={cn("flex-1 rounded-lg py-2 text-sm font-semibold transition-colors", mode === "login" ? "bg-electric-500 text-white shadow-glow" : "text-ice-200/60 hover:text-white")}
+              className={cn("flex-1 rounded-lg py-2 text-sm font-semibold transition-colors", mode === "login" || mode === "forgot" ? "bg-electric-500 text-white shadow-glow" : "text-ice-200/60 hover:text-white")}
             >
               Connexion
             </button>
@@ -139,7 +153,7 @@ export function AuthGate() {
                 {loading ? "Création..." : "Créer mon compte"}
               </Button>
             </form>
-          ) : (
+          ) : mode === "login" ? (
             <form onSubmit={handleLogin} className="flex flex-col gap-4">
               <Field label="Email">
                 <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="toi@exemple.com" className="input" />
@@ -147,10 +161,30 @@ export function AuthGate() {
               <Field label="Mot de passe">
                 <PasswordInput value={loginPassword} onChange={setLoginPassword} />
               </Field>
+              <button type="button" onClick={() => switchMode("forgot")} className="self-end text-xs text-electric-400 hover:text-electric-300">
+                Mot de passe oublié ?
+              </button>
               {error && <p className="text-xs font-medium text-red-400">{error}</p>}
               <Button type="submit" size="lg" className="mt-2" disabled={loading}>
                 {loading ? "Connexion..." : "Se connecter"}
               </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleForgot} className="flex flex-col gap-4">
+              <p className="text-sm text-ice-200/60">
+                Indique ton email de connexion, on t'envoie un lien pour choisir un nouveau mot de passe.
+              </p>
+              <Field label="Email">
+                <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} placeholder="toi@exemple.com" className="input" />
+              </Field>
+              {forgotSent && <p className="text-xs font-medium text-emerald-400">{forgotSent}</p>}
+              {error && <p className="text-xs font-medium text-red-400">{error}</p>}
+              <Button type="submit" size="lg" className="mt-2" disabled={forgotLoading || !!forgotSent}>
+                {forgotLoading ? "Envoi..." : "Envoyer le lien"}
+              </Button>
+              <button type="button" onClick={() => switchMode("login")} className="self-center text-xs text-ice-200/50 hover:text-white">
+                ← Retour à la connexion
+              </button>
             </form>
           )}
         </Card>
@@ -172,7 +206,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function PasswordInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+export function PasswordInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [visible, setVisible] = useState(false);
   return (
     <div className="relative">

@@ -9,6 +9,7 @@ import { useCelebrationStore } from "./store/celebrationStore";
 import { useGlobalFeedStore } from "./store/globalFeedStore";
 import { useGiftsStore } from "./store/giftsStore";
 import { AuthGate } from "./components/auth/AuthGate";
+import { ResetPasswordScreen } from "./components/auth/ResetPasswordScreen";
 import { Header } from "./components/layout/Header";
 import { MobileNav } from "./components/layout/MobileNav";
 import { Footer } from "./components/layout/Footer";
@@ -37,6 +38,7 @@ const Braquage = lazy(() => import("./pages/Braquage").then((m) => ({ default: m
 const Boosters = lazy(() => import("./pages/Boosters").then((m) => ({ default: m.Boosters })));
 const Cases = lazy(() => import("./pages/Cases").then((m) => ({ default: m.Cases })));
 const Pmu = lazy(() => import("./pages/Pmu").then((m) => ({ default: m.Pmu })));
+const Ministry = lazy(() => import("./pages/Ministry").then((m) => ({ default: m.Ministry })));
 const Bonus = lazy(() => import("./pages/Bonus").then((m) => ({ default: m.Bonus })));
 const Rewards = lazy(() => import("./pages/Rewards").then((m) => ({ default: m.Rewards })));
 const Leaderboard = lazy(() => import("./pages/Leaderboard").then((m) => ({ default: m.Leaderboard })));
@@ -61,6 +63,7 @@ const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = 
   boosters: () => <Boosters />,
   cases: () => <Cases />,
   pmu: () => <Pmu />,
+  ministry: () => <Ministry />,
   bonus: () => <Bonus />,
   rewards: () => <Rewards />,
   leaderboard: () => <Leaderboard />,
@@ -85,6 +88,7 @@ export default function App() {
   const [tab, setTab] = useState<AppTab>("home");
   const [navOpen, setNavOpen] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const recoveryMode = useAuthStore((s) => s.recoveryMode);
   const initializing = useAuthStore((s) => s.initializing);
   const account = useAuthStore((s) => s.account);
   const init = useAuthStore((s) => s.init);
@@ -145,6 +149,7 @@ export default function App() {
     );
   }
 
+  if (recoveryMode) return <ResetPasswordScreen />;
   if (!isAuthenticated) return <AuthGate />;
 
   const gameId = GATED_GAME_IDS[tab];

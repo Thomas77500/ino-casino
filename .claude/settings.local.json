@@ -2,7 +2,41 @@
   "permissions": {
     "allow": [
       "Bash(git init *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git rm *)",
+      "Bash(git commit *)",
+      "Bash(npx vite *)",
+      "Bash(powershell -NoProfile -Command \"Get-NetTCPConnection -LocalPort 5183 -State Listen -ErrorAction SilentlyContinue\")",
+      "Bash(nohup npx vite --port 5184 --strictPort)",
+      "Bash(disown)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5184/)",
+      "Bash(node verify_mobile.mjs)",
+      "Bash(node -e ' *)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5184 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })",
+      "Bash(git remote *)",
+      "Bash(git branch *)",
+      "Bash(git push *)",
+      "Bash(node \"C:\\\\Users\\\\THOMAS~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-ThomasTHOUAYE-ino-casino\\\\0b5c6de0-b482-4fde-a623-672e5d200e6a\\\\scratchpad\\\\simulate_cases.mjs\")",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5185 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })",
+      "Bash(node verify_batch3.mjs)",
+      "Bash(node verify_scroll.mjs)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5186 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })",
+      "Bash(node \"C:\\\\Users\\\\THOMAS~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-ThomasTHOUAYE-ino-casino\\\\0b5c6de0-b482-4fde-a623-672e5d200e6a\\\\scratchpad\\\\simulate_pmu.mjs\")",
+      "Bash(node verify_pmu.mjs)",
+      "Bash(node verify_euro.mjs)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5187 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })",
+      "Bash(node verify_casefix.mjs)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5188 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })",
+      "Bash(node verify_bar.mjs)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5189 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })",
+      "Bash(node preview_logo.mjs)",
+      "Bash(node verify_logo.mjs)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5190 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })",
+      "Bash(node verify_split.mjs)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5191 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })",
+      "Bash(node verify_profile.mjs)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 5192 -State Listen -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -Confirm:$false })"
     ]
   }
 }

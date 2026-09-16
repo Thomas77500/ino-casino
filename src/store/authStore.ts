@@ -16,6 +16,7 @@ interface AuthState {
   initializing: boolean;
   loading: boolean;
   error: string | null;
+  recoveryMode: boolean;
   init: () => Promise<void>;
   signUp: (input: { username: string; email: string; password: string; avatar: string; referrer?: string }) => Promise<boolean>;
   login: (input: { email: string; password: string }) => Promise<boolean>;
@@ -23,6 +24,8 @@ interface AuthState {
   updateProfile: (input: { username?: string; avatar?: string; frame?: string; title?: string }) => Promise<void>;
   updateEmail: (newEmail: string) => Promise<{ ok: boolean; message: string }>;
   updatePassword: (newPassword: string) => Promise<{ ok: boolean; message: string }>;
+  requestPasswordReset: (email: string) => Promise<{ ok: boolean; message: string }>;
+  exitRecoveryMode: () => void;
   clearError: () => void;
 }
 
@@ -44,6 +47,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   initializing: true,
   loading: false,
   error: null,
+  recoveryMode: false,
 
   init: async () => {
     const { data } = await supabase.auth.getSession();
@@ -59,7 +63,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
     set({ initializing: false });
 
-    supabase.auth.onAuthStateChange(async (_event, session) => {
+    // A password-reset email link lands here with a recovery token — supabase-js turns it into a
+    // real session automatically and fires this event. Log the account in as usual, but flag
+    // recoveryMode so the UI shows "choose a new password" instead of dropping them straight into
+    // the app with whatever password they just clicked past.
+    supabase.auth.onAuthStateChange(async (event, session) => {
       if (!session?.user) {
         set({ account: null, isAuthenticated: false });
         return;
@@ -71,7 +79,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       }
       if (profile) {
         const { banned: _banned, ...rest } = profile;
-        set({ account: { id: session.user.id, email: session.user.email ?? "", ...rest }, isAuthenticated: true });
+        set({
+          account: { id: session.user.id, email: session.user.email ?? "", ...rest },
+          isAuthenticated: true,
+          recoveryMode: event === "PASSWORD_RECOVERY" ? true : get().recoveryMode,
+        });
       }
     });
   },
@@ -157,7 +169,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
   logout: async () => {
     await supabase.auth.signOut();
-    set({ account: null, isAuthenticated: false });
+    set({ account: null, isAuthenticated: false, recoveryMode: false });
   },
 
   updateProfile: async ({ username, avatar, frame, title }) => {
@@ -193,6 +205,18 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     if (error) return { ok: false, message: error.message };
     return { ok: true, message: "Mot de passe mis à jour." };
   },
+
+  // Always reports success regardless of whether the email is registered — same behavior Supabase
+  // itself returns — so this can't be used to check which addresses have an account.
+  requestPasswordReset: async (email) => {
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      return { ok: false, message: "Adresse email invalide." };
+    }
+    await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+    return { ok: true, message: "Si un compte existe avec cette adresse, un email de réinitialisation vient d'être envoyé." };
+  },
+
+  exitRecoveryMode: () => set({ recoveryMode: false }),
 
   clearError: () => set({ error: null }),
 }));
