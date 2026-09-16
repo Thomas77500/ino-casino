@@ -22,6 +22,7 @@ import {
   drawMandateEvents, type MandateEvent, CATEGORY_LABEL,
   billsForYear, resolveVote, resolveBribeLeak, type Bill, type VoteChoice,
   bribeCost, resolveBribe, resolveChaos, resolveCensureMotion, computeOutcome,
+  drawHappening, shouldTriggerHappening,
 } from "../lib/ministryEngine";
 
 const ITEM_WIDTH = 128;
@@ -33,7 +34,7 @@ const WINNING_INDEX = 50;
 const SPIN_DURATION = 5.5;
 
 type View = "mandat" | "palmares" | "salon";
-type Phase = "idle" | "spinning" | "votes" | "event" | "recap";
+type Phase = "idle" | "spinning" | "votes" | "happening" | "event" | "recap";
 
 interface MandateState {
   ministry: MinistryDef;
@@ -62,6 +63,7 @@ const CATEGORY_TONE: Record<MandateEvent["category"], "danger" | "gold" | "elect
   serieux: "neutral",
   vote: "success",
   election: "gold",
+  happening: "electric",
 };
 
 function ReelTile({ ministry }: { ministry: MinistryDef }) {
@@ -93,6 +95,7 @@ export function Ministry() {
   const [resolving, setResolving] = useState(false);
   const [lastOutcome, setLastOutcome] = useState<string | null>(null);
   const [chaosActive, setChaosActive] = useState(false);
+  const [happening, setHappening] = useState<MandateEvent | null>(null);
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
   const [result, setResult] = useState<RoundResult | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -219,6 +222,10 @@ export function Ministry() {
         setMandate({ ...mandate, billIndex: nextBillIndex, popularity: newPopularity, treasury: newTreasury });
         setLastOutcome(null);
         setResolving(false);
+        if (shouldTriggerHappening()) {
+          setHappening(drawHappening());
+          setPhase("happening");
+        }
       } else {
         setMandate({ ...mandate, popularity: newPopularity, treasury: newTreasury });
         setLastOutcome(null);
@@ -226,6 +233,59 @@ export function Ministry() {
         setPhase("event");
       }
     }, 1100);
+  }
+
+  // Same shape as choose() below (two choices, optional chaos, censure check if popularity dips
+  // low enough) but always hands back to "votes" instead of advancing the mandate's turn.
+  function resolveHappening(choice: "a" | "b") {
+    if (!mandate || !happening || resolving) return;
+    const picked = choice === "a" ? happening.choices[0] : happening.choices[1];
+    let popDelta = 0;
+    let treasuryDelta = 0;
+    let outcomeText = "";
+
+    if (picked.chaos) {
+      const r = resolveChaos();
+      popDelta = r.popularity;
+      treasuryDelta = r.treasury;
+      outcomeText = r.outcome;
+      setChaosActive(true);
+      setTimeout(() => setChaosActive(false), 2400);
+    } else {
+      popDelta = picked.popularity;
+      treasuryDelta = picked.treasury;
+      outcomeText = picked.outcome;
+    }
+
+    let newPopularity = Math.max(0, Math.min(100, mandate.popularity + popDelta));
+    const newTreasury = mandate.treasury + treasuryDelta;
+    let censured = newPopularity <= 0;
+
+    if (!censured && newPopularity <= 30) {
+      const cm = resolveCensureMotion(newPopularity, winBias);
+      outcomeText += `\n\n${cm.narrative}`;
+      if (cm.survived) {
+        newPopularity = Math.max(0, newPopularity - cm.popularityPenalty);
+        censured = newPopularity <= 0;
+      } else {
+        censured = true;
+      }
+    }
+
+    setResolving(true);
+    setLastOutcome(outcomeText);
+
+    setTimeout(() => {
+      setHappening(null);
+      if (censured) {
+        finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, censured), censured);
+      } else {
+        setMandate({ ...mandate, popularity: newPopularity, treasury: newTreasury });
+        setLastOutcome(null);
+        setResolving(false);
+        setPhase("votes");
+      }
+    }, outcomeText.includes("Motion de censure") ? 3200 : 1600);
   }
 
   function choose(choice: "a" | "b" | "bribe") {
@@ -357,8 +417,8 @@ export function Ministry() {
               </div>
               <p className="mt-4 text-sm text-ice-200/60">
                 Tourne la roulette de nomination. Selon la case, tu prends un portefeuille pour {MANDATE_LENGTH} ans —
-                15 à 20 votes de lois de finances par année, un grand événement, et une motion de censure jamais loin
-                si ta popularité s'effondre.
+                15 à 20 votes de lois de finances par année, quelques soirées et happenings imprévisibles entre deux votes,
+                un grand événement annuel, et une motion de censure jamais loin si ta popularité s'effondre.
               </p>
               <div className="mt-6 flex justify-center">
                 <Button size="lg" onClick={spin} disabled={spinning || credits < ENTRY_COST}>
@@ -381,7 +441,7 @@ export function Ministry() {
             </Card>
           )}
 
-          {(phase === "votes" || phase === "event") && mandate && (
+          {(phase === "votes" || phase === "happening" || phase === "event") && mandate && (
             <div className="flex flex-col gap-4">
               <Card className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -444,6 +504,31 @@ export function Ministry() {
                           💰 Accepter
                         </Button>
                       )}
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {phase === "happening" && happening && (
+                <Card className="p-4 sm:p-6" glow>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Badge tone={CATEGORY_TONE[happening.category]}>{CATEGORY_LABEL[happening.category]}</Badge>
+                  </div>
+                  <h2 className="font-display text-lg font-bold text-white">{happening.title}</h2>
+                  <p className="mt-2 text-sm text-ice-200/70">{happening.description}</p>
+
+                  {lastOutcome !== null ? (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
+                      {lastOutcome}
+                    </motion.div>
+                  ) : (
+                    <div className="mt-5 flex flex-col gap-2">
+                      <Button variant="secondary" onClick={() => resolveHappening("a")} disabled={resolving} className="w-full">
+                        {happening.choices[0].label}
+                      </Button>
+                      <Button variant="secondary" onClick={() => resolveHappening("b")} disabled={resolving} className="w-full">
+                        {happening.choices[1].label}
+                      </Button>
                     </div>
                   )}
                 </Card>

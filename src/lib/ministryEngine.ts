@@ -60,7 +60,7 @@ export interface MandateChoice {
 
 export interface MandateEvent {
   id: string;
-  category: "polemique" | "derive" | "fun" | "serieux" | "vote" | "election";
+  category: "polemique" | "derive" | "fun" | "serieux" | "vote" | "election" | "happening";
   title: string;
   description: string;
   choices: [MandateChoice, MandateChoice];
@@ -73,6 +73,7 @@ export const CATEGORY_LABEL: Record<MandateEvent["category"], string> = {
   serieux: "Sérieux",
   vote: "Vote",
   election: "Élection",
+  happening: "Soirée",
 };
 
 export const EVENT_POOL: MandateEvent[] = [
@@ -415,6 +416,89 @@ export function generateBill(ministry: Ministry): Bill {
 export function billsForYear(ministry: Ministry): Bill[] {
   const count = randInt(VOTES_PER_YEAR_MIN, VOTES_PER_YEAR_MAX);
   return Array.from({ length: count }, () => generateBill(ministry));
+}
+
+// ============================================================================
+// Happenings — soirées, pots et réceptions qui surgissent entre deux votes pour aérer la session
+// législative. Même forme qu'un MandateEvent (deux choix, parfois un `chaos` résolu par
+// resolveChaos()), tirés d'un pool séparé et déclenchés au hasard pendant la phase de votes.
+// ============================================================================
+
+export const HAPPENING_POOL: MandateEvent[] = [
+  {
+    id: "happening-cocktail-ambassade", category: "happening", title: "Cocktail à l'Ambassade",
+    description: "Une réception mondaine bat son plein, le champagne coule à flots et tout le microcosme politique est là.",
+    choices: [
+      { label: "Réseauter intelligemment, un verre à la main", outcome: "Quelques alliances utiles nouées dans la bonne humeur.", popularity: 6, treasury: 0 },
+      { label: "Enchaîner les coupes jusqu'au bout de la nuit", outcome: "Ambiance excellente, mémoire floue le lendemain.", popularity: 3, treasury: -2 },
+    ],
+  },
+  {
+    id: "happening-pot-depart", category: "happening", title: "Pot de Départ d'un Collègue",
+    description: "Un ministre voisin quitte le gouvernement. Le pot de départ dégénère gentiment en soirée.",
+    choices: [
+      { label: "Faire un discours touchant et rentrer tôt", outcome: "Sobriété remarquée, image de sérieux renforcée.", popularity: 4, treasury: 0 },
+      { label: "Rester jusqu'à la fermeture", outcome: "Super soirée, une photo un peu ridicule circule déjà.", popularity: -2, treasury: 0 },
+    ],
+  },
+  {
+    id: "happening-inauguration-arrosee", category: "happening", title: "Inauguration Très Arrosée",
+    description: "L'inauguration d'un rond-point tourne au prétexte pour un buffet et un open bar improvisé.",
+    choices: [
+      { label: "Couper le ruban et filer discrètement", outcome: "Efficace, sans éclat.", popularity: 1, treasury: 0 },
+      { label: "Rester trinquer avec les élus locaux", outcome: "Belle image de proximité, direct dans la presse régionale.", popularity: 8, treasury: -1 },
+    ],
+  },
+  {
+    id: "happening-boite-nuit", category: "happening", title: "La Boîte de Nuit du Conseiller",
+    description: "Ton directeur de cabinet t'entraîne \"juste pour un verre\" dans une boîte branchée après un dîner officiel.",
+    choices: [
+      { label: "Décliner, demain il y a un conseil des ministres", outcome: "Raisonnable, personne ne le remarque vraiment.", popularity: 0, treasury: 0 },
+      { label: "Y aller, juste un peu", outcome: "", popularity: 0, treasury: 0, chaos: true },
+    ],
+  },
+  {
+    id: "happening-anniversaire", category: "happening", title: "Ton Anniversaire au Ministère",
+    description: "Ton cabinet t'organise une surprise avec gâteau et chansons en pleine réunion budgétaire.",
+    choices: [
+      { label: "Jouer le jeu, souffler les bougies", outcome: "Moment attendrissant qui humanise ton image.", popularity: 9, treasury: 0 },
+      { label: "Écourter, il y a le budget à boucler", outcome: "Ton cabinet est un peu vexé, mais le travail avance.", popularity: -2, treasury: 3 },
+    ],
+  },
+  {
+    id: "happening-diner-lobbyistes", category: "happening", title: "Dîner Bien Arrosé avec des Lobbyistes",
+    description: "Un dîner \"de travail\" avec des représentants d'intérêts se transforme en grande tablée festive.",
+    choices: [
+      { label: "Garder la tête froide, partir après le café", outcome: "Prudent, rien à te reprocher.", popularity: 2, treasury: 0 },
+      { label: "Se laisser porter par la soirée", outcome: "Super ambiance, une note de frais compromettante traîne.", popularity: -6, treasury: 5 },
+    ],
+  },
+  {
+    id: "happening-apres-sommet", category: "happening", title: "L'After du Sommet International",
+    description: "Après des heures de négociations, les délégations se retrouvent pour un after improvisé à l'hôtel.",
+    choices: [
+      { label: "Rentrer se reposer pour le lendemain", outcome: "Frais et dispo pour la suite des négociations.", popularity: 3, treasury: 0 },
+      { label: "Trinquer avec les délégations étrangères", outcome: "", popularity: 0, treasury: 0, chaos: true },
+    ],
+  },
+  {
+    id: "happening-fete-nationale", category: "happening", title: "Bal de la Fête Nationale",
+    description: "Le traditionnel bal populaire du 14 juillet t'attend, avec fanfare et jambe de bois.",
+    choices: [
+      { label: "Ouvrir le bal avec le maire", outcome: "Image chaleureuse et populaire, ça marche à tous les coups.", popularity: 10, treasury: 0 },
+      { label: "Passer en coup de vent", outcome: "Poli, mais un peu froid comme image.", popularity: 1, treasury: 0 },
+    ],
+  },
+];
+
+export function drawHappening(): MandateEvent {
+  return pick(HAPPENING_POOL);
+}
+
+// ~28% chance after resolving a vote (never after the last one, which hands off to the grand
+// yearly event) — punctuates the 15-20 votes of a session with a handful of parties/dérives.
+export function shouldTriggerHappening(): boolean {
+  return chance(0.28);
 }
 
 export interface VoteResult {
