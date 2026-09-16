@@ -180,6 +180,46 @@ export const EVENT_POOL: MandateEvent[] = [
       { label: "Rester avec l'avocat actuel, ça suffit", outcome: "Économies faites, mais un peu de vulnérabilité en plus.", respect: 0, heat: 3, recettes: 0 },
     ],
   },
+  {
+    id: "succession-vieux-parrain", category: "serieux", title: "La Succession du Vieux Parrain",
+    description: "Le patriarche historique du quartier voisin s'éteint. Sa succession s'annonce chaotique — et lucrative pour qui sait saisir sa chance.",
+    choices: [
+      { label: "Rester neutre, ne pas s'en mêler", outcome: "Prudent — tu évites une guerre inutile.", respect: 2, heat: 0, recettes: 0 },
+      { label: "Placer discrètement tes pions dans la succession", outcome: "Une partie de son territoire tombe sous ton influence.", respect: 9, heat: 7, recettes: 22000 },
+    ],
+  },
+  {
+    id: "temoin-proces", category: "serieux", title: "Un Témoin Doit Témoigner",
+    description: "Un ancien associé est convoqué comme témoin dans une affaire qui pourrait remonter jusqu'à toi.",
+    choices: [
+      { label: "S'assurer qu'il ait un très bon avocat, à tes frais", outcome: "Son témoignage reste flou et inexploitable.", respect: 3, heat: -5, recettes: -15000 },
+      { label: "Le laisser se débrouiller seul", outcome: "Nerveux, il en dit un peu trop au juge.", respect: -4, heat: 12, recettes: 0 },
+    ],
+  },
+  {
+    id: "livraison-suspecte", category: "affaires", title: "Une Livraison qui N'Arrive Jamais",
+    description: "Une cargaison attendue depuis trois jours ne s'est jamais présentée aux quais convenus.",
+    choices: [
+      { label: "Enquêter calmement sur ce qui a coincé", outcome: "Un simple problème de douane, réglé sans bruit.", respect: 1, heat: 1, recettes: -2000 },
+      { label: "Envoyer des hommes réclamer des comptes", outcome: "La cargaison réapparaît miraculeusement — et vite.", respect: 6, heat: 8, recettes: 12000 },
+    ],
+  },
+  {
+    id: "elu-local-approche", category: "affaires", title: "Un Élu Local Vient te Voir",
+    description: "Un conseiller municipal en délicatesse financière vient discrètement demander un \"coup de pouce\".",
+    choices: [
+      { label: "L'aider sans contrepartie immédiate", outcome: "Un ami précieux au conseil municipal, pour plus tard.", respect: 5, heat: 1, recettes: -6000 },
+      { label: "Négocier des faveurs concrètes en échange", outcome: "Deux permis de construire s'accélèrent étrangement.", respect: 3, heat: 4, recettes: 14000 },
+    ],
+  },
+  {
+    id: "rumeur-indic", category: "serieux", title: "La Rumeur d'un Indic dans le Groupe",
+    description: "Une rumeur circule : quelqu'un de proche transmettrait des informations à la police.",
+    choices: [
+      { label: "Enquêter discrètement, sans faire de vagues", outcome: "Fausse alerte — mais la vigilance générale s'en trouve renforcée.", respect: 4, heat: -2, recettes: 0 },
+      { label: "Resserrer brutalement la sécurité de tout le monde", outcome: "L'ambiance se tend fortement dans tout le réseau.", respect: -3, heat: 5, recettes: 0 },
+    ],
+  },
 ];
 
 // ============================================================================
@@ -251,6 +291,30 @@ export const HAPPENING_POOL: MandateEvent[] = [
       { label: "Miser gros sur un tuyau \"garanti\"", outcome: "Le tuyau était bidon — une grosse perte, mais l'audace impressionne.", respect: 4, heat: 2, recettes: -10000 },
     ],
   },
+  {
+    id: "happening-diner-familles", category: "happening", title: "Dîner entre Familles",
+    description: "Un dîner de courtoisie avec les familles voisines, sur un terrain neutre choisi avec soin.",
+    choices: [
+      { label: "Proposer un pacte de non-agression", outcome: "Tension apaisée durablement entre les familles.", respect: 7, heat: -2, recettes: 0 },
+      { label: "Profiter du dîner pour tester leurs failles", outcome: "Information précieuse récoltée, méfiance en hausse.", respect: 4, heat: 5, recettes: 0 },
+    ],
+  },
+  {
+    id: "happening-remise-cadeaux", category: "happening", title: "La Tournée des Cadeaux de Fin d'Année",
+    description: "La tradition veut une tournée de cadeaux pour tous les commerçants \"sous protection\" du quartier.",
+    choices: [
+      { label: "Des cadeaux modestes mais sincères", outcome: "Geste apprécié, relations apaisées avec les commerçants.", respect: 5, heat: -1, recettes: -3000 },
+      { label: "Des cadeaux somptueux, pour marquer les esprits", outcome: "Effet impressionnant, mais ça jase dans le quartier.", respect: 8, heat: 3, recettes: -12000 },
+    ],
+  },
+  {
+    id: "happening-veillee-funebre", category: "happening", title: "Veillée Funèbre d'un Ancien",
+    description: "Un ancien du quartier, respecté de tous, vient de mourir. Toute la ville assiste à la veillée.",
+    choices: [
+      { label: "Un hommage sobre et sincère", outcome: "Ta présence digne est remarquée et saluée.", respect: 8, heat: 0, recettes: 0 },
+      { label: "En profiter pour discuter affaires avec les présents", outcome: "Quelques accords se nouent, mais ça choque certains.", respect: 3, heat: 3, recettes: 6000 },
+    ],
+  },
 ];
 
 export function drawHappening(usedIds: string[] = []): { event: MandateEvent; usedIds: string[] } {
@@ -267,6 +331,41 @@ export function shouldTriggerHappening(): boolean {
 
 export function shouldTriggerSurpriseRaid(): boolean {
   return chance(0.05);
+}
+
+// ============================================================================
+// Factions — la confiance de chaque camp du quartier (0-100, départ à 50) envers la manière dont
+// tu opères. Chaque racket déplace la confiance de tous les camps à la fois selon leur affinité
+// pour le muscle ou la discrétion, et la confiance moyenne pèse ensuite dans les chances de survie
+// d'une descente de police — un règne peut être personnellement respecté mais tomber quand même si
+// tous les camps du quartier se méfient de lui.
+// ============================================================================
+
+export interface Faction {
+  id: string;
+  label: string;
+  short: string;
+  lean: number; // -1 (déteste le muscle, aime la discrétion) à +1 (respecte le muscle) — pure fiction
+}
+
+export const FACTIONS: Faction[] = [
+  { id: "vieille-garde", label: "La Vieille Garde", short: "Anciens", lean: 0.7 },
+  { id: "jeunes-recrues", label: "Les Jeunes Recrues", short: "Jeunes", lean: 0.4 },
+  { id: "commercants", label: "Les Commerçants du Quartier", short: "Commerces", lean: -0.6 },
+  { id: "contacts-police", label: "Les Contacts dans la Police", short: "Flics", lean: -0.8 },
+  { id: "familles-rivales", label: "Les Familles Rivales", short: "Rivaux", lean: 0.5 },
+];
+
+export const START_FACTION_CONFIDENCE = 50;
+
+export function applyFactionConfidence(confidence: Record<string, number>, approach: RacketApproach): Record<string, number> {
+  const next = { ...confidence };
+  const sign = approach === "musclee" ? 1 : -1;
+  for (const f of FACTIONS) {
+    const delta = Math.round(f.lean * sign * randInt(1, 4));
+    next[f.id] = Math.max(0, Math.min(100, (next[f.id] ?? START_FACTION_CONFIDENCE) + delta));
+  }
+  return next;
 }
 
 // ============================================================================
@@ -320,9 +419,9 @@ export interface RacketResult {
 export function resolveRacket(business: Business, approach: RacketApproach, bias = 1): RacketResult {
   const successChance = 0.6 + (approach === "discrete" ? 0.06 : -0.04);
   const success = biasedChance(successChance, bias);
-  const recettes = success ? randInt(800, approach === "musclee" ? 6000 : 3000) : 0;
-  const respect = success ? randInt(1, approach === "musclee" ? 5 : 3) : -randInt(0, 2);
-  const heat = approach === "musclee" ? randInt(2, 6) : randInt(0, 2);
+  const recettes = success ? randInt(1200, approach === "musclee" ? 9000 : 4500) : 0;
+  const respect = success ? randInt(1, approach === "musclee" ? 6 : 3) : -randInt(0, 2);
+  const heat = approach === "musclee" ? randInt(2, 7) : randInt(0, 2);
   const narrative = `${business.label} — ${success ? `Versement obtenu de ${business.pool}.` : `Refus catégorique de ${business.pool}.`}`;
   return { success, narrative, respect, heat, recettes };
 }
@@ -362,7 +461,7 @@ export function resolveChaos(): ChaosResult {
 // ============================================================================
 
 export function bribeCost(territory: Territory): number {
-  return Math.round(ENTRY_COST * 1.5 * Math.max(1, TIER_MULTIPLIER[territory.tier]));
+  return Math.round(ENTRY_COST * 2.2 * Math.max(1, TIER_MULTIPLIER[territory.tier]));
 }
 
 const BRIBE_SUCCESS_LINES = [
@@ -386,9 +485,9 @@ export interface BribeResult {
 export function resolveBribe(bias = 1): BribeResult {
   const success = biasedChance(0.6, bias);
   if (success) {
-    return { success: true, respect: randInt(5, 12), heat: -randInt(15, 28), outcome: pick(BRIBE_SUCCESS_LINES) };
+    return { success: true, respect: randInt(8, 18), heat: -randInt(22, 40), outcome: pick(BRIBE_SUCCESS_LINES) };
   }
-  return { success: false, respect: -randInt(20, 35), heat: randInt(20, 35), outcome: pick(BRIBE_FAIL_LINES) };
+  return { success: false, respect: -randInt(30, 50), heat: randInt(30, 50), outcome: pick(BRIBE_FAIL_LINES) };
 }
 
 // ============================================================================
@@ -402,8 +501,9 @@ export interface RaidResult {
   heatAfter: number;
 }
 
-export function resolveRaid(respect: number, heat: number, bias = 1): RaidResult {
-  const basis = respect * 0.6 - heat * 0.4;
+export function resolveRaid(respect: number, heat: number, bias = 1, avgFactionConfidence?: number): RaidResult {
+  const core = respect * 0.6 - heat * 0.4;
+  const basis = avgFactionConfidence !== undefined ? core * 0.7 + (avgFactionConfidence - 50) * 0.3 : core;
   const surviveChance = 0.25 + (Math.max(0, Math.min(100, basis + 50)) / 100) * 0.55;
   const survived = biasedChance(surviveChance, bias);
   const narrative = survived

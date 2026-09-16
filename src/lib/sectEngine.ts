@@ -182,6 +182,38 @@ export const EVENT_POOL: MandateEvent[] = [
       { label: "Accepter le montage", outcome: "Ça arrondit joliment les comptes. Pour l'instant, personne ne sait.", influence: 0, suspicion: 9, dons: 18000 },
     ],
   },
+  {
+    id: "succession-dispute", category: "serieux", title: "Une Succession Contestée",
+    description: "Un adepte fortuné vient de mourir et a légué l'intégralité de sa fortune au mouvement. Sa famille conteste le testament.",
+    choices: [
+      { label: "Proposer un arrangement amiable avec la famille", outcome: "Un compromis honorable, moins d'argent mais moins de bruit.", influence: 3, suspicion: -4, dons: 15000 },
+      { label: "Défendre le testament jusqu'au bout devant les tribunaux", outcome: "Tu gagnes le procès, mais l'affaire fait grand bruit dans la presse.", influence: -2, suspicion: 12, dons: 60000 },
+    ],
+  },
+  {
+    id: "second-cercle-revolte", category: "recrutement", title: "Le Second Cercle se Rebiffe",
+    description: "Un groupe d'adeptes de longue date réclame plus de transparence sur l'usage des dons.",
+    choices: [
+      { label: "Organiser une réunion transparente sur les comptes", outcome: "La confiance se reconstruit, même si certains chiffres surprennent.", influence: 6, suspicion: -2, dons: 0 },
+      { label: "Les recadrer fermement sur leur manque de foi", outcome: "Deux d'entre eux partent, amers, et parlent autour d'eux.", influence: -5, suspicion: 8, dons: 0 },
+    ],
+  },
+  {
+    id: "manuscrit-sacre", category: "fun", title: "Le \"Manuscrit Sacré\" Retrouvé",
+    description: "Un adepte prétend avoir retrouvé un ancien texte fondateur du mouvement, oublié depuis des générations.",
+    choices: [
+      { label: "L'authentifier prudemment avant toute annonce", outcome: "Prudent — l'authenticité reste à prouver, mais rien à regretter.", influence: 2, suspicion: -1, dons: 0 },
+      { label: "L'annoncer en grande pompe comme une révélation majeure", outcome: "Ferveur immense chez les adeptes, scepticisme amusé dans la presse.", influence: 12, suspicion: 5, dons: 8000 },
+    ],
+  },
+  {
+    id: "documentaire-critique", category: "serieux", title: "Un Documentaire à Charge Sort en Salles",
+    description: "Un réalisateur indépendant sort un documentaire clairement critique sur le fonctionnement du mouvement.",
+    choices: [
+      { label: "Répondre point par point dans un communiqué mesuré", outcome: "La réponse calme posément une partie des critiques.", influence: 2, suspicion: -5, dons: 0 },
+      { label: "Faire interdire la diffusion par tous les moyens légaux", outcome: "Interdiction obtenue, mais l'effet Streisand est monumental.", influence: -8, suspicion: 16, dons: -10000 },
+    ],
+  },
 ];
 
 // ============================================================================
@@ -270,6 +302,30 @@ export const HAPPENING_POOL: MandateEvent[] = [
       { label: "Improviser, en toute confiance", outcome: "Charismatique, mais une question piège fait mouche.", influence: 3, suspicion: 5, dons: 0 },
     ],
   },
+  {
+    id: "happening-pelerinage", category: "happening", title: "Grand Pèlerinage Annuel",
+    description: "Le pèlerinage annuel vers le lieu \"sacré\" fondateur du mouvement rassemble des adeptes venus de tout le pays.",
+    choices: [
+      { label: "Un pèlerinage organisé avec rigueur et sécurité", outcome: "Moment fort, aucun incident à déplorer.", influence: 9, suspicion: 1, dons: 5000 },
+      { label: "Laisser l'improvisation guider le voyage", outcome: "Ambiance mystique intense, logistique chaotique.", influence: 6, suspicion: 5, dons: 2000 },
+    ],
+  },
+  {
+    id: "happening-mariage-gourou", category: "happening", title: "Ton Propre Mariage Cérémoniel",
+    description: "Tes plus proches conseillers organisent une cérémonie d'union symbolique entre toi et le mouvement tout entier.",
+    choices: [
+      { label: "Une cérémonie intime, réservée au premier cercle", outcome: "Moment fort et intime, très apprécié des plus fidèles.", influence: 8, suspicion: 1, dons: 0 },
+      { label: "Une cérémonie ouverte à tous, filmée et diffusée", outcome: "Diffusion massive, ferveur immense — et beaucoup de questions extérieures.", influence: 13, suspicion: 8, dons: 4000 },
+    ],
+  },
+  {
+    id: "happening-marche-bienfaisance", category: "happening", title: "Marche de Bienfaisance",
+    description: "Le mouvement organise une grande marche caritative pour une cause locale, très médiatisée.",
+    choices: [
+      { label: "Reverser l'intégralité des fonds collectés", outcome: "Geste sincèrement salué, image redorée durablement.", influence: 11, suspicion: -6, dons: -5000 },
+      { label: "Garder une commission \"pour les frais d'organisation\"", outcome: "Personne ne remarque rien... pour l'instant.", influence: 5, suspicion: 4, dons: 8000 },
+    ],
+  },
 ];
 
 export function drawHappening(usedIds: string[] = []): { event: MandateEvent; usedIds: string[] } {
@@ -288,6 +344,41 @@ export function shouldTriggerHappening(): boolean {
 // du seuil de suspicion habituel — pure drama imprévisible.
 export function shouldTriggerSurpriseRaid(): boolean {
   return chance(0.05);
+}
+
+// ============================================================================
+// Factions — la confiance de chaque camp autour du mouvement (0-100, départ à 50) envers la
+// manière dont tu recrutes. Chaque campagne déplace la confiance de tous les camps à la fois selon
+// leur affinité pour l'agressivité ou la douceur, et la confiance moyenne pèse ensuite dans les
+// chances de survie d'une descente — un mouvement peut être personnellement influent mais tomber
+// quand même si tous les camps se méfient de lui.
+// ============================================================================
+
+export interface Faction {
+  id: string;
+  label: string;
+  short: string;
+  lean: number; // -1 (déteste l'agressivité, aime la douceur) à +1 (tolère/encourage l'agressivité) — pure fiction
+}
+
+export const FACTIONS: Faction[] = [
+  { id: "premier-cercle", label: "Le Premier Cercle", short: "Cercle", lean: 0.6 },
+  { id: "nouveaux-adeptes", label: "Les Nouveaux Adeptes", short: "Nouveaux", lean: 0.3 },
+  { id: "familles-inquietes", label: "Les Familles Inquiètes", short: "Familles", lean: -0.7 },
+  { id: "presse-locale", label: "La Presse Locale", short: "Presse", lean: -0.5 },
+  { id: "mecenes", label: "Les Mécènes du Mouvement", short: "Mécènes", lean: 0.5 },
+];
+
+export const START_FACTION_CONFIDENCE = 50;
+
+export function applyFactionConfidence(confidence: Record<string, number>, approach: RecruitApproach): Record<string, number> {
+  const next = { ...confidence };
+  const sign = approach === "agressive" ? 1 : -1;
+  for (const f of FACTIONS) {
+    const delta = Math.round(f.lean * sign * randInt(1, 4));
+    next[f.id] = Math.max(0, Math.min(100, (next[f.id] ?? START_FACTION_CONFIDENCE) + delta));
+  }
+  return next;
 }
 
 // ============================================================================
@@ -343,10 +434,10 @@ export interface DriveResult {
 export function resolveDrive(target: RecruitTarget, approach: RecruitApproach, bias = 1): DriveResult {
   const successChance = 0.55 + (approach === "douce" ? 0.08 : -0.05);
   const success = biasedChance(successChance, bias);
-  const recruited = success ? randInt(3, approach === "agressive" ? 14 : 9) : randInt(0, 2);
-  const dons = success ? recruited * randInt(150, 400) : randInt(0, 100);
-  const influence = success ? randInt(1, approach === "agressive" ? 5 : 3) : -randInt(0, 2);
-  const suspicion = approach === "agressive" ? randInt(2, 6) : randInt(0, 2);
+  const recruited = success ? randInt(3, approach === "agressive" ? 16 : 10) : randInt(0, 2);
+  const dons = success ? recruited * randInt(220, 550) : randInt(0, 100);
+  const influence = success ? randInt(1, approach === "agressive" ? 6 : 3) : -randInt(0, 2);
+  const suspicion = approach === "agressive" ? randInt(2, 7) : randInt(0, 2);
   const narrative = `${target.label} — ${success ? `${recruited} nouveaux adeptes parmi ${target.pool}.` : `Approche infructueuse auprès ${target.pool}.`}`;
   return { success, recruited, narrative, influence, suspicion, dons };
 }
@@ -388,7 +479,7 @@ export function resolveChaos(): ChaosResult {
 // ============================================================================
 
 export function bribeCost(cult: CultType): number {
-  return Math.round(ENTRY_COST * 1.5 * Math.max(1, TIER_MULTIPLIER[cult.tier]));
+  return Math.round(ENTRY_COST * 2.2 * Math.max(1, TIER_MULTIPLIER[cult.tier]));
 }
 
 const BRIBE_SUCCESS_LINES = [
@@ -412,9 +503,9 @@ export interface BribeResult {
 export function resolveBribe(bias = 1): BribeResult {
   const success = biasedChance(0.6, bias);
   if (success) {
-    return { success: true, influence: randInt(5, 12), suspicion: -randInt(15, 28), outcome: pick(BRIBE_SUCCESS_LINES) };
+    return { success: true, influence: randInt(8, 18), suspicion: -randInt(22, 40), outcome: pick(BRIBE_SUCCESS_LINES) };
   }
-  return { success: false, influence: -randInt(20, 35), suspicion: randInt(20, 35), outcome: pick(BRIBE_FAIL_LINES) };
+  return { success: false, influence: -randInt(30, 50), suspicion: randInt(30, 50), outcome: pick(BRIBE_FAIL_LINES) };
 }
 
 // ============================================================================
@@ -429,8 +520,9 @@ export interface RaidResult {
   suspicionAfter: number;
 }
 
-export function resolveRaid(influence: number, suspicion: number, bias = 1): RaidResult {
-  const basis = influence * 0.6 - suspicion * 0.4;
+export function resolveRaid(influence: number, suspicion: number, bias = 1, avgFactionConfidence?: number): RaidResult {
+  const core = influence * 0.6 - suspicion * 0.4;
+  const basis = avgFactionConfidence !== undefined ? core * 0.7 + (avgFactionConfidence - 50) * 0.3 : core;
   const surviveChance = 0.25 + (Math.max(0, Math.min(100, basis + 50)) / 100) * 0.55;
   const survived = biasedChance(surviveChance, bias);
   const narrative = survived

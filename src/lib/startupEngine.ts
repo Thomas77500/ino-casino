@@ -180,6 +180,38 @@ export const EVENT_POOL: MandateEvent[] = [
       { label: "Négocier discrètement, au cas où", outcome: "La rumeur d'un rachat imminent fuite, l'ambiance devient bizarre.", hype: -2, scrutiny: 5, funding: 0 },
     ],
   },
+  {
+    id: "lanceur-alerte-interne", category: "serieux", title: "Un Lanceur d'Alerte en Interne",
+    description: "Un employé anonyme envoie un long mail interne détaillant des \"pratiques comptables douteuses\" à toute l'équipe.",
+    choices: [
+      { label: "Organiser une réunion transparente sur les chiffres", outcome: "La confiance interne se reconstruit, non sans quelques départs.", hype: -3, scrutiny: -4, funding: -50000 },
+      { label: "Identifier et licencier discrètement le lanceur d'alerte", outcome: "Le mail continue de circuler, désormais accompagné de captures d'écran.", hype: -6, scrutiny: 15, funding: 0 },
+    ],
+  },
+  {
+    id: "concurrent-rachete-toi", category: "levee", title: "Une Offre de Rachat de TON Concurrent",
+    description: "Ton principal concurrent, à court de trésorerie, te propose de le racheter à bas prix.",
+    choices: [
+      { label: "Décliner, rester concentré sur ton propre produit", outcome: "Sage décision — l'intégration aurait été un cauchemar.", hype: 2, scrutiny: 0, funding: 0 },
+      { label: "Racheter pour éliminer la concurrence", outcome: "Position dominante acquise, mais la fusion coûte cher et fait grincer des dents.", hype: 10, scrutiny: 6, funding: -400000 },
+    ],
+  },
+  {
+    id: "influenceur-tech-critique", category: "fun", title: "Un Influenceur Tech Démonte ton Produit",
+    description: "Une vidéo virale d'un influenceur tech connu démonte publiquement les promesses marketing de ton produit.",
+    choices: [
+      { label: "Répondre avec humour et humilité", outcome: "L'auto-dérision retourne l'opinion en ta faveur.", hype: 8, scrutiny: 1, funding: 0 },
+      { label: "Le menacer de poursuites pour diffamation", outcome: "Effet Streisand garanti, la vidéo explose encore plus.", hype: -10, scrutiny: 8, funding: -20000 },
+    ],
+  },
+  {
+    id: "grosse-panne-serveur", category: "serieux", title: "Une Panne Majeure en Pleine Démo Investisseur",
+    description: "Les serveurs tombent en panne au pire moment possible — en plein pitch devant un fonds prestigieux.",
+    choices: [
+      { label: "Assumer avec transparence et humour", outcome: "L'honnêteté impressionne plus que la démo n'aurait pu le faire.", hype: 6, scrutiny: 0, funding: 100000 },
+      { label: "Improviser une fausse démo pré-enregistrée", outcome: "Ça passe sur le moment, mais un technicien du fonds s'en aperçoit.", hype: 3, scrutiny: 12, funding: 250000 },
+    ],
+  },
 ];
 
 // ============================================================================
@@ -252,6 +284,30 @@ export const HAPPENING_POOL: MandateEvent[] = [
       { label: "Profiter surtout des pistes", outcome: "Belle cohésion, roadmap un peu vague au retour.", hype: 1, scrutiny: 2, funding: -60000 },
     ],
   },
+  {
+    id: "happening-demo-day", category: "happening", title: "Demo Day de l'Incubateur",
+    description: "Le grand Demo Day annuel de ton ancien incubateur t'invite à revenir présenter ton évolution devant tout l'écosystème.",
+    choices: [
+      { label: "Une présentation honnête de tes vrais résultats", outcome: "Respecté pour ta transparence par tout l'écosystème.", hype: 6, scrutiny: -1, funding: 100000 },
+      { label: "Une présentation \"enjolivée\" pour marquer les esprits", outcome: "Standing ovation garantie, quelques questions gênantes en coulisses ensuite.", hype: 12, scrutiny: 6, funding: 300000 },
+    ],
+  },
+  {
+    id: "happening-offsite-equipe", category: "happening", title: "Offsite d'Équipe à l'Étranger",
+    description: "Toute l'équipe s'envole pour un séminaire de trois jours dans une destination \"inspirante\".",
+    choices: [
+      { label: "Un programme structuré autour de vrais objectifs", outcome: "Retour productif, roadmap clarifiée pour le trimestre.", hype: 5, scrutiny: 0, funding: -80000 },
+      { label: "Laisser l'équipe profiter à fond de la destination", outcome: "Cohésion excellente, quelques photos gênantes circulent en interne.", hype: 3, scrutiny: 3, funding: -150000 },
+    ],
+  },
+  {
+    id: "happening-couverture-magazine", category: "happening", title: "Couverture d'un Magazine Business",
+    description: "Un grand magazine économique te propose la couverture de son numéro \"Jeunes Fondateurs qui Comptent\".",
+    choices: [
+      { label: "Une interview mesurée et factuelle", outcome: "Image sérieuse renforcée durablement.", hype: 8, scrutiny: -2, funding: 0 },
+      { label: "Une interview flamboyante, pleine de promesses", outcome: "Couverture spectaculaire, attentes énormes créées d'un coup.", hype: 15, scrutiny: 7, funding: 0 },
+    ],
+  },
 ];
 
 export function drawHappening(usedIds: string[] = []): { event: MandateEvent; usedIds: string[] } {
@@ -268,6 +324,41 @@ export function shouldTriggerHappening(): boolean {
 
 export function shouldTriggerSurpriseAudit(): boolean {
   return chance(0.05);
+}
+
+// ============================================================================
+// Factions — la confiance de chaque camp autour de la startup (0-100, départ à 50) envers ta prise
+// de risque. Chaque pitch déplace la confiance de tous les camps à la fois selon leur affinité pour
+// l'audace ou la prudence, et la confiance moyenne pèse ensuite dans les chances de survie d'un
+// audit — une startup peut avoir un hype personnel énorme mais couler quand même si tous les camps
+// se méfient d'elle.
+// ============================================================================
+
+export interface Faction {
+  id: string;
+  label: string;
+  short: string;
+  lean: number; // -1 (déteste l'audace, aime la prudence) à +1 (encourage l'audace) — pure fiction
+}
+
+export const FACTIONS: Faction[] = [
+  { id: "board", label: "Le Board d'Investisseurs", short: "Board", lean: 0.5 },
+  { id: "equipe-technique", label: "L'Équipe Technique", short: "Tech", lean: -0.6 },
+  { id: "presse-tech", label: "La Presse Tech", short: "Presse", lean: 0.4 },
+  { id: "regulateurs", label: "Les Régulateurs (AMF fictive)", short: "Régul.", lean: -0.8 },
+  { id: "premiers-clients", label: "Les Premiers Clients", short: "Clients", lean: -0.3 },
+];
+
+export const START_FACTION_CONFIDENCE = 50;
+
+export function applyFactionConfidence(confidence: Record<string, number>, approach: PitchApproach): Record<string, number> {
+  const next = { ...confidence };
+  const sign = approach === "audacieuse" ? 1 : -1;
+  for (const f of FACTIONS) {
+    const delta = Math.round(f.lean * sign * randInt(1, 4));
+    next[f.id] = Math.max(0, Math.min(100, (next[f.id] ?? START_FACTION_CONFIDENCE) + delta));
+  }
+  return next;
 }
 
 // ============================================================================
@@ -323,10 +414,10 @@ export interface PitchResult {
 export function resolvePitch(investor: InvestorProfile, approach: PitchApproach, bias = 1): PitchResult {
   const successChance = 0.55 + (approach === "prudente" ? 0.08 : -0.05);
   const success = biasedChance(successChance, bias);
-  const raised = success ? randInt(50000, approach === "audacieuse" ? 900000 : 400000) : 0;
+  const raised = success ? randInt(70000, approach === "audacieuse" ? 1300000 : 550000) : 0;
   const funding = success ? raised : 0;
-  const hype = success ? randInt(1, approach === "audacieuse" ? 5 : 3) : -randInt(0, 2);
-  const scrutiny = approach === "audacieuse" ? randInt(2, 6) : randInt(0, 2);
+  const hype = success ? randInt(1, approach === "audacieuse" ? 6 : 3) : -randInt(0, 2);
+  const scrutiny = approach === "audacieuse" ? randInt(2, 7) : randInt(0, 2);
   const narrative = `${investor.label} — ${success ? `${(raised / 1000).toFixed(0)}k€ levés auprès ${investor.pool}.` : `Rendez-vous infructueux avec ${investor.pool}.`}`;
   return { success, raised, narrative, hype, scrutiny, funding };
 }
@@ -366,7 +457,7 @@ export function resolveChaos(): ChaosResult {
 // ============================================================================
 
 export function bribeCost(sector: Sector): number {
-  return Math.round(ENTRY_COST * 1.5 * Math.max(1, TIER_MULTIPLIER[sector.tier]));
+  return Math.round(ENTRY_COST * 2.2 * Math.max(1, TIER_MULTIPLIER[sector.tier]));
 }
 
 const BRIBE_SUCCESS_LINES = [
@@ -390,9 +481,9 @@ export interface BribeResult {
 export function resolveBribe(bias = 1): BribeResult {
   const success = biasedChance(0.6, bias);
   if (success) {
-    return { success: true, hype: randInt(5, 12), scrutiny: -randInt(15, 28), outcome: pick(BRIBE_SUCCESS_LINES) };
+    return { success: true, hype: randInt(8, 18), scrutiny: -randInt(22, 40), outcome: pick(BRIBE_SUCCESS_LINES) };
   }
-  return { success: false, hype: -randInt(20, 35), scrutiny: randInt(20, 35), outcome: pick(BRIBE_FAIL_LINES) };
+  return { success: false, hype: -randInt(30, 50), scrutiny: randInt(30, 50), outcome: pick(BRIBE_FAIL_LINES) };
 }
 
 // ============================================================================
@@ -406,8 +497,9 @@ export interface AuditResult {
   scrutinyAfter: number;
 }
 
-export function resolveAudit(hype: number, scrutiny: number, bias = 1): AuditResult {
-  const basis = hype * 0.6 - scrutiny * 0.4;
+export function resolveAudit(hype: number, scrutiny: number, bias = 1, avgFactionConfidence?: number): AuditResult {
+  const core = hype * 0.6 - scrutiny * 0.4;
+  const basis = avgFactionConfidence !== undefined ? core * 0.7 + (avgFactionConfidence - 50) * 0.3 : core;
   const surviveChance = 0.25 + (Math.max(0, Math.min(100, basis + 50)) / 100) * 0.55;
   const survived = biasedChance(surviveChance, bias);
   const narrative = survived

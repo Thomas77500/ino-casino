@@ -10,7 +10,69 @@ import { CLUBS, type Club } from "./clubEngine";
 // PvP réel.
 // ============================================================================
 
-export const HOUSE_STAKE = 20_000; // capital risqué pour ouvrir le livre sur une manche
+// ============================================================================
+// Réputation — persistée localement (bookmakerStore.ts), jamais remise à zéro entre les sessions.
+// Elle grandit avec les livres profitables et grimpe plus vite si tu gères bien tes réguliers ;
+// chaque palier débloque un capital de mise (houseStake) et une taille de foule (poolMax) bien plus
+// gros que le précédent — le tout premier soir dans l'arrière-salle d'un bar n'a rien à voir avec
+// diriger le plus gros livre clandestin de la ville.
+// ============================================================================
+
+export interface ReputationTier {
+  min: number;
+  label: string;
+  houseStake: number;
+  poolMax: number;
+}
+
+export const REP_TIERS: ReputationTier[] = [
+  { min: 0, label: "Bookmaker de Quartier", houseStake: 20_000, poolMax: 60_000 },
+  { min: 40, label: "Bookmaker Reconnu", houseStake: 60_000, poolMax: 160_000 },
+  { min: 100, label: "Bookmaker de la Ville", houseStake: 150_000, poolMax: 420_000 },
+  { min: 220, label: "Bookmaker Régional", houseStake: 350_000, poolMax: 950_000 },
+  { min: 450, label: "Parrain des Paris Clandestins", houseStake: 800_000, poolMax: 2_200_000 },
+];
+
+export function tierForReputation(reputation: number): ReputationTier {
+  return [...REP_TIERS].reverse().find((t) => reputation >= t.min) ?? REP_TIERS[0];
+}
+
+// Points de réputation gagnés/perdus après un livre — profitable et gros fait grandir vite,
+// perdant fait reculer, jamais sous 0.
+export function reputationDelta(profit: number, houseStake: number): number {
+  if (profit >= 0) return Math.max(1, Math.round((profit / houseStake) * 6));
+  return -Math.max(2, Math.round((Math.abs(profit) / houseStake) * 8));
+}
+
+// ============================================================================
+// Réguliers — une poignée de parieurs récurrents, nommés, avec leur propre fidélité (trust,
+// 0-100, persisté par bookmakerStore.ts). Un régulier de confiance mise plus gros et paie plus
+// fiablement ; un régulier méfiant mise petit et lâche plus souvent l'ardoise. Chaque manche en met
+// un sous le feu des projecteurs — c'est lui qui apparaît nommément dans le récit, pas un inconnu
+// anonyme à chaque fois.
+// ============================================================================
+
+export interface Regular {
+  id: string;
+  name: string;
+  glyph: string;
+  personality: string;
+}
+
+export const REGULARS: Regular[] = [
+  { id: "momo", name: "Momo \"Les Bonnes Cotes\"", glyph: "🎩", personality: "un habitué du café du coin, jamais avare d'un pari risqué" },
+  { id: "sylvie", name: "Sylvie du Pressing", glyph: "👛", personality: "prudente, mais fidèle quand la confiance est là" },
+  { id: "kevin", name: "Kevin \"Le Flambeur\"", glyph: "💸", personality: "mise systématiquement plus qu'il ne devrait" },
+  { id: "denise", name: "Denise, 68 Ans, Increvable", glyph: "🧓", personality: "suit les paris depuis trente ans, ne rate jamais un rendez-vous" },
+  { id: "yanis", name: "Yanis le Barman", glyph: "🍺", personality: "prend les paris de tout le quartier pour lui-même" },
+  { id: "corinne", name: "Corinne de la Compta", glyph: "📎", personality: "calcule tout, ne mise que sur du \"sûr\"" },
+  { id: "doudou", name: "Doudou du Marché", glyph: "🧢", personality: "toujours partant, toujours fauché avant le week-end" },
+  { id: "isabelle", name: "Isabelle, la Nouvelle", glyph: "🆕", personality: "arrivée récemment, encore méfiante" },
+];
+
+export function pickFeaturedRegular(): Regular {
+  return pick(REGULARS);
+}
 
 export type Outcome = "home" | "draw" | "away";
 export const OUTCOMES: Outcome[] = ["home", "draw", "away"];
@@ -113,34 +175,42 @@ function weightedOutcome(fair: Record<Outcome, number>): Outcome {
   return "away";
 }
 
-export function randomPoolSize(): number {
-  return randInt(15000, 60000);
+// `trust` (0-100, du régulier mis en avant ce soir-là) gonfle légèrement la foule : un régulier de
+// confiance ramène ses propres contacts, un régulier méfiant reste discret.
+export function randomPoolSize(poolMax: number, trust = 50): number {
+  const trustFactor = 0.8 + (trust / 100) * 0.4;
+  return Math.round(randInt(Math.round(poolMax * 0.25), poolMax) * trustFactor);
 }
 
 // ============================================================================
-// Mauvais payeurs — une part des mises perdantes a été prise "à l'ardoise" plutôt qu'en cash. Un
-// coup sur cinq environ, l'un de ces parieurs ne paie pas — au joueur de choisir d'encaisser la
-// perte ou de tenter de la récupérer, avec un petit risque en contrepartie.
+// Mauvais payeurs — une part des mises perdantes a été prise "à l'ardoise" plutôt qu'en cash. La
+// probabilité dépend directement de la confiance du régulier mis en avant ce soir-là : un régulier
+// fiable lâche rarement l'ardoise, un régulier méfiant beaucoup plus souvent.
 // ============================================================================
 
-const BAD_PAYER_LINES = [
-  "Un parieur régulier prétend avoir \"tout perdu dans un autre pari\" ce soir-là.",
-  "Le type au bar du coin jure qu'il te paiera \"la semaine prochaine, promis\".",
-  "Une habituée a changé de numéro de téléphone du jour au lendemain.",
-];
+function badPayerLine(regular: Regular): string {
+  const lines = [
+    `${regular.name} prétend avoir "tout perdu dans un autre pari" ce soir-là.`,
+    `${regular.name} jure te payer "la semaine prochaine, promis".`,
+    `${regular.name} a curieusement changé de numéro de téléphone du jour au lendemain.`,
+  ];
+  return pick(lines);
+}
 
 export interface BadPayerEvent {
   happened: boolean;
   amountAtRisk: number;
   narrative: string;
+  regular: Regular;
 }
 
-export function rollBadPayer(totalCollected: number): BadPayerEvent {
-  if (totalCollected > 0 && chance(0.22)) {
+export function rollBadPayer(totalCollected: number, regular: Regular, trust: number): BadPayerEvent {
+  const badPayerChance = Math.max(0.05, Math.min(0.45, 0.32 - (trust / 100) * 0.27));
+  if (totalCollected > 0 && chance(badPayerChance)) {
     const amountAtRisk = Math.round(totalCollected * (0.08 + Math.random() * 0.22));
-    return { happened: true, amountAtRisk, narrative: pick(BAD_PAYER_LINES) };
+    return { happened: true, amountAtRisk, narrative: badPayerLine(regular), regular };
   }
-  return { happened: false, amountAtRisk: 0, narrative: "" };
+  return { happened: false, amountAtRisk: 0, narrative: "", regular };
 }
 
 export interface CollectResult {
@@ -158,8 +228,11 @@ const COLLECT_FAIL_LINES = [
   "Le rappel tourne mal — il évite désormais ton book, et le dit autour de lui.",
 ];
 
-export function attemptCollect(amountAtRisk: number, bias = 1): CollectResult {
-  const success = chance(Math.min(0.9, Math.max(0.15, 0.55 * bias)));
+// Un régulier déjà digne de confiance cède plus facilement à un rappel ; un régulier déjà méfiant
+// se braque davantage.
+export function attemptCollect(amountAtRisk: number, trust: number, bias = 1): CollectResult {
+  const successChance = 0.35 + (trust / 100) * 0.4;
+  const success = chance(Math.min(0.92, Math.max(0.12, successChance * bias)));
   if (success) {
     return { recovered: amountAtRisk, narrative: pick(COLLECT_SUCCESS_LINES), success: true };
   }

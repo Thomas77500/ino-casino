@@ -23,8 +23,12 @@ import {
   opsForYear, resolveOp, type Witness, type OpsApproach,
   bribeCost, resolveBribe, resolveChaos, resolveAudit, computeOutcome,
   drawHappening, shouldTriggerHappening, shouldTriggerSurpriseAudit,
-  resolveReveal,
+  resolveReveal, FACTIONS, START_FACTION_CONFIDENCE, applyFactionConfidence,
 } from "../lib/area51Engine";
+
+function average(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
 
 const ITEM_WIDTH = 128;
 const ITEM_GAP = 8;
@@ -43,6 +47,7 @@ interface MandateState {
   control: number;
   leaks: number;
   budget: number;
+  factionConfidence: Record<string, number>;
   events: MandateEvent[];
   ops: Witness[];
   opIndex: number;
@@ -143,6 +148,7 @@ export function Area51() {
     }
     setMandate({
       program, turn: 0, control: START_CONTROL, leaks: START_LEAKS, budget: 0,
+      factionConfidence: Object.fromEntries(FACTIONS.map((f) => [f.id, START_FACTION_CONFIDENCE])),
       events: drawMandateEvents(), ops: opsForYear(), opIndex: 0,
       usedHappeningIds: [],
     });
@@ -191,11 +197,13 @@ export function Area51() {
     let newControl = Math.max(0, Math.min(100, mandate.control + result.control));
     let newLeaks = Math.max(0, Math.min(100, mandate.leaks + result.leaks));
     const newBudget = mandate.budget + result.budget;
+    const newFactionConfidence = applyFactionConfidence(mandate.factionConfidence, approach);
     let extraText = "";
     let busted = false;
 
     if (newLeaks >= 75 || shouldTriggerSurpriseAudit()) {
-      const audit = resolveAudit(newControl, newLeaks, winBias);
+      const avgConfidence = average(Object.values(newFactionConfidence));
+      const audit = resolveAudit(newControl, newLeaks, winBias, avgConfidence);
       extraText += `\n\n${audit.narrative}`;
       if (audit.survived) {
         newLeaks = audit.leaksAfter;
@@ -212,7 +220,7 @@ export function Area51() {
         finalizeRound(mandate.program, newControl, newBudget, true, computeOutcome(mandate.program, newControl, newBudget, true));
         return;
       }
-      const carried = { ...mandate, control: newControl, leaks: newLeaks, budget: newBudget };
+      const carried = { ...mandate, control: newControl, leaks: newLeaks, budget: newBudget, factionConfidence: newFactionConfidence };
       const nextOpIndex = mandate.opIndex + 1;
       if (nextOpIndex < mandate.ops.length) {
         let usedHappeningIds = mandate.usedHappeningIds;
@@ -273,7 +281,8 @@ export function Area51() {
     let busted = false;
 
     if (newLeaks >= 75) {
-      const audit = resolveAudit(newControl, newLeaks, winBias);
+      const avgConfidence = average(Object.values(mandate.factionConfidence));
+      const audit = resolveAudit(newControl, newLeaks, winBias, avgConfidence);
       outcomeText += `\n\n${audit.narrative}`;
       if (audit.survived) {
         newLeaks = audit.leaksAfter;
@@ -343,7 +352,8 @@ export function Area51() {
     const nextTurn = mandate.turn + 1;
 
     if (newLeaks >= 75) {
-      const audit = resolveAudit(newControl, newLeaks, winBias);
+      const avgConfidence = average(Object.values(mandate.factionConfidence));
+      const audit = resolveAudit(newControl, newLeaks, winBias, avgConfidence);
       outcomeText += `\n\n${audit.narrative}`;
       if (audit.survived) {
         newLeaks = audit.leaksAfter;
@@ -502,6 +512,25 @@ export function Area51() {
                       </p>
                     </div>
                   </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
+                  {FACTIONS.map((f) => {
+                    const v = mandate.factionConfidence[f.id] ?? 50;
+                    return (
+                      <span
+                        key={f.id}
+                        title={f.label}
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                          v >= 60 ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300" :
+                          v <= 35 ? "border-red-400/30 bg-red-500/10 text-red-300" :
+                          "border-white/10 bg-white/5 text-ice-200/60"
+                        )}
+                      >
+                        {f.short} {v}
+                      </span>
+                    );
+                  })}
                 </div>
               </Card>
 

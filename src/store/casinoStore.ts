@@ -69,6 +69,9 @@ interface CasinoState {
   biggestWin: number;
   gamesPlayed: Partial<Record<HistoryEntry["game"], number>>;
   ownedFrames: string[];
+  // epoch ms of the casino_progress row's `updated_at` the last time this device knew it matched
+  // its own local state (either just pushed it, or just pulled it) — see hydrateFromCloud.
+  lastSyncedAt: number | null;
 
   canBet: (amount: number) => boolean;
   placeBet: (amount: number) => void;
@@ -114,6 +117,7 @@ export const useCasinoStore = create<CasinoState>()(
       biggestWin: 0,
       gamesPlayed: {},
       ownedFrames: ["none"],
+      lastSyncedAt: null,
 
       canBet: (amount) => get().credits >= amount,
 
@@ -248,32 +252,33 @@ export const useCasinoStore = create<CasinoState>()(
       // follows the account across devices/browsers instead of staying stuck in one localStorage.
       // Best-effort: silently no-ops if schema_progress.sql hasn't been run yet.
       //
-      // Never blindly trust the remote row over local: the debounced push in syncToCloud can
-      // still be in flight when the tab closes/refreshes, so remote can lag a few seconds behind
-      // what's already safely in localStorage. totalWagered+totalWon only ever goes up over a
-      // player's lifetime, so it's a reliable "which copy is further along" signal — pull remote
-      // only when it's actually ahead (a genuinely new device), otherwise push local up instead.
-      // This also self-heals a remote row that got stuck on a stale snapshot.
+      // Whether to trust remote over local is decided by comparing the row's `updated_at` against
+      // `lastSyncedAt` — the timestamp THIS device last knew for certain matched its own state
+      // (persisted, so it survives a refresh). If remote changed since then, something external
+      // happened (another device, an admin grant/reset, a gift, a marketplace sale — all while this
+      // device was offline) and remote is authoritative. Otherwise nothing external happened and any
+      // difference is purely this device's own unsynced play, so push local up instead.
+      //
+      // An earlier version of this compared totalWagered+totalWon as a "who's further along" proxy.
+      // That broke in the single most common case: right after playing, with the 1.5s debounced
+      // push still in flight, a refresh would see local ahead on progress and (in one iteration of
+      // this fix) blindly pull remote's stale pre-sync credits over the player's own fresh winnings.
+      // Real timestamps don't have that blind spot — they say directly whether anything changed
+      // remotely since this device last checked, regardless of what kind of change it was.
       hydrateFromCloud: async (userId) => {
-        const { data, error } = await supabase.from("casino_progress").select("state").eq("user_id", userId).maybeSingle();
+        const { data, error } = await supabase.from("casino_progress").select("state, updated_at").eq("user_id", userId).maybeSingle();
         if (error) return;
         const remote = data?.state as Partial<CasinoState> | undefined;
-        const localProgress = get().totalWagered + get().totalWon;
-        const remoteProgress = (remote?.totalWagered ?? 0) + (remote?.totalWon ?? 0);
+        const remoteUpdatedAt = data?.updated_at ? new Date(data.updated_at).getTime() : 0;
+        const localSyncedAt = get().lastSyncedAt ?? 0;
 
-        if (remote && remoteProgress >= localProgress) {
-          set(remote);
+        if (remote && remoteUpdatedAt > localSyncedAt) {
+          set({ ...remote, lastSyncedAt: remoteUpdatedAt });
           lastSyncedCredits = remote.credits;
         } else {
-          // Local is ahead on progress — almost always just this device's own unsynced play (the
-          // debounced push in syncToCloud hadn't fired yet when the tab closed/refreshed), NOT an
-          // external grant. Pulling remote's credits here was tried and reverted: it clobbered the
-          // player's own just-earned winnings with the stale pre-sync remote value on nearly every
-          // refresh. Out-of-band credit changes (admin grants, gifts, marketplace sales) while this
-          // device is online are instead caught live by subscribeToCloud below; a grant landing
-          // while fully offline AND local happens to be ahead in progress at next login is the one
-          // narrow gap this leaves, same as before this file was touched this session.
-          await supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: new Date().toISOString() });
+          const updatedAt = new Date().toISOString();
+          await supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: updatedAt });
+          set({ lastSyncedAt: new Date(updatedAt).getTime() });
           lastSyncedCredits = get().credits;
         }
       },
@@ -282,7 +287,10 @@ export const useCasinoStore = create<CasinoState>()(
         clearTimeout(syncTimer);
         syncTimer = setTimeout(() => {
           lastSyncedCredits = get().credits;
-          supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: new Date().toISOString() });
+          const updatedAt = new Date().toISOString();
+          supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: updatedAt }).then(({ error }) => {
+            if (!error) set({ lastSyncedAt: new Date(updatedAt).getTime() });
+          });
         }, 1500);
       },
 
@@ -300,8 +308,12 @@ export const useCasinoStore = create<CasinoState>()(
         const channel = supabase
           .channel(`casino-progress-own:${userId}`)
           .on("postgres_changes", { event: "*", schema: "public", table: "casino_progress", filter: `user_id=eq.${userId}` }, (payload) => {
-            const remote = (payload.new as { state?: Partial<CasinoState> } | undefined)?.state;
-            const remoteCredits = remote?.credits;
+            const row = payload.new as { state?: Partial<CasinoState>; updated_at?: string } | undefined;
+            const remoteCredits = row?.state?.credits;
+            if (row?.updated_at) {
+              const t = new Date(row.updated_at).getTime();
+              if (t > (get().lastSyncedAt ?? 0)) set({ lastSyncedAt: t });
+            }
             if (remoteCredits === undefined || remoteCredits === lastSyncedCredits) return;
             lastSyncedCredits = remoteCredits;
             const delta = remoteCredits - get().credits;

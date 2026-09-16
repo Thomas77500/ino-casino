@@ -23,8 +23,12 @@ import {
   pitchesForRound, resolvePitch, type InvestorProfile, type PitchApproach,
   bribeCost, resolveBribe, resolveChaos, resolveAudit, computeOutcome,
   drawHappening, shouldTriggerHappening, shouldTriggerSurpriseAudit,
-  resolveIpo,
+  resolveIpo, FACTIONS, START_FACTION_CONFIDENCE, applyFactionConfidence,
 } from "../lib/startupEngine";
+
+function average(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
 
 const ITEM_WIDTH = 128;
 const ITEM_GAP = 8;
@@ -43,6 +47,7 @@ interface MandateState {
   hype: number;
   scrutiny: number;
   funding: number;
+  factionConfidence: Record<string, number>;
   events: MandateEvent[];
   pitches: InvestorProfile[];
   pitchIndex: number;
@@ -143,6 +148,7 @@ export function Startup() {
     }
     setMandate({
       sector, turn: 0, hype: START_HYPE, scrutiny: START_SCRUTINY, funding: 0,
+      factionConfidence: Object.fromEntries(FACTIONS.map((f) => [f.id, START_FACTION_CONFIDENCE])),
       events: drawMandateEvents(), pitches: pitchesForRound(), pitchIndex: 0,
       usedHappeningIds: [],
     });
@@ -191,11 +197,13 @@ export function Startup() {
     let newHype = Math.max(0, Math.min(100, mandate.hype + result.hype));
     let newScrutiny = Math.max(0, Math.min(100, mandate.scrutiny + result.scrutiny));
     const newFunding = mandate.funding + result.funding;
+    const newFactionConfidence = applyFactionConfidence(mandate.factionConfidence, approach);
     let extraText = "";
     let busted = false;
 
     if (newScrutiny >= 75 || shouldTriggerSurpriseAudit()) {
-      const audit = resolveAudit(newHype, newScrutiny, winBias);
+      const avgConfidence = average(Object.values(newFactionConfidence));
+      const audit = resolveAudit(newHype, newScrutiny, winBias, avgConfidence);
       extraText += `\n\n${audit.narrative}`;
       if (audit.survived) {
         newScrutiny = audit.scrutinyAfter;
@@ -212,7 +220,7 @@ export function Startup() {
         finalizeRound(mandate.sector, newHype, newFunding, true, computeOutcome(mandate.sector, newHype, newFunding, true));
         return;
       }
-      const carried = { ...mandate, hype: newHype, scrutiny: newScrutiny, funding: newFunding };
+      const carried = { ...mandate, hype: newHype, scrutiny: newScrutiny, funding: newFunding, factionConfidence: newFactionConfidence };
       const nextPitchIndex = mandate.pitchIndex + 1;
       if (nextPitchIndex < mandate.pitches.length) {
         let usedHappeningIds = mandate.usedHappeningIds;
@@ -273,7 +281,8 @@ export function Startup() {
     let busted = false;
 
     if (newScrutiny >= 75) {
-      const audit = resolveAudit(newHype, newScrutiny, winBias);
+      const avgConfidence = average(Object.values(mandate.factionConfidence));
+      const audit = resolveAudit(newHype, newScrutiny, winBias, avgConfidence);
       outcomeText += `\n\n${audit.narrative}`;
       if (audit.survived) {
         newScrutiny = audit.scrutinyAfter;
@@ -343,7 +352,8 @@ export function Startup() {
     const nextTurn = mandate.turn + 1;
 
     if (newScrutiny >= 75) {
-      const audit = resolveAudit(newHype, newScrutiny, winBias);
+      const avgConfidence = average(Object.values(mandate.factionConfidence));
+      const audit = resolveAudit(newHype, newScrutiny, winBias, avgConfidence);
       outcomeText += `\n\n${audit.narrative}`;
       if (audit.survived) {
         newScrutiny = audit.scrutinyAfter;
@@ -500,6 +510,25 @@ export function Startup() {
                       <p className="font-display text-sm font-bold text-emerald-400">{formatCredits(mandate.funding)}</p>
                     </div>
                   </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
+                  {FACTIONS.map((f) => {
+                    const v = mandate.factionConfidence[f.id] ?? 50;
+                    return (
+                      <span
+                        key={f.id}
+                        title={f.label}
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                          v >= 60 ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300" :
+                          v <= 35 ? "border-red-400/30 bg-red-500/10 text-red-300" :
+                          "border-white/10 bg-white/5 text-ice-200/60"
+                        )}
+                      >
+                        {f.short} {v}
+                      </span>
+                    );
+                  })}
                 </div>
               </Card>
 

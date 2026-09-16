@@ -180,6 +180,38 @@ export const EVENT_POOL: MandateEvent[] = [
       { label: "Confisquer discrètement leur matériel", outcome: "Efficace, mais l'un d'eux poste déjà la scène sur les réseaux.", control: -3, leaks: 8, budget: 0 },
     ],
   },
+  {
+    id: "commission-enquete-preliminaire", category: "serieux", title: "Une Commission d'Enquête Préliminaire",
+    description: "Une sous-commission du Congrès ouvre discrètement une enquête préliminaire sur le budget noir du programme.",
+    choices: [
+      { label: "Coopérer pleinement avec un dossier édulcoré", outcome: "La commission clôt le dossier, satisfaite en apparence.", control: 5, leaks: -6, budget: -15000 },
+      { label: "Invoquer le secret défense pour tout bloquer", outcome: "Ça bloque l'enquête, mais ça nourrit encore plus les soupçons.", control: -4, leaks: 12, budget: 0 },
+    ],
+  },
+  {
+    id: "specimen-evade", category: "recherche", title: "Une Alerte de \"Confinement Rompu\"",
+    description: "Une alarme de confinement se déclenche en pleine nuit — probablement un simple faux contact, mais impossible d'en être sûr avant l'aube.",
+    choices: [
+      { label: "Suivre le protocole d'urgence à la lettre", outcome: "Fausse alerte confirmée au petit matin, protocole validé.", control: 6, leaks: 1, budget: -8000 },
+      { label: "Gérer discrètement en interne, sans réveiller la hiérarchie", outcome: "Réglé sans bruit, mais un supérieur l'apprend plus tard et s'en agace.", control: 2, leaks: 4, budget: -3000 },
+    ],
+  },
+  {
+    id: "reporter-infiltre", category: "serieux", title: "Un Reporter Infiltré parmi les Sous-Traitants",
+    description: "Un journaliste d'investigation se serait fait embaucher sous une fausse identité parmi les sous-traitants du site.",
+    choices: [
+      { label: "Vérifier discrètement les identités de tout le personnel", outcome: "Le reporter est identifié et discrètement écarté avant d'obtenir quoi que ce soit.", control: 7, leaks: -3, budget: -20000 },
+      { label: "Ne rien changer, ça semble excessif", outcome: "Un article détaillé sort deux mois plus tard.", control: -6, leaks: 14, budget: 0 },
+    ],
+  },
+  {
+    id: "essai-communication", category: "recherche", title: "Tentative de Communication",
+    description: "L'équipe scientifique propose de tenter une communication directe avec le spécimen à l'étude.",
+    choices: [
+      { label: "Rester dans l'observation passive, plus prudente", outcome: "Progrès lents mais aucune surprise.", control: 3, leaks: 0, budget: -10000 },
+      { label: "Tenter la communication active", outcome: "", control: 0, leaks: 0, budget: 0, chaos: true },
+    ],
+  },
 ];
 
 // ============================================================================
@@ -243,6 +275,30 @@ export const HAPPENING_POOL: MandateEvent[] = [
       { label: "Projeter un vrai extrait d'archive \"pour rire\"", outcome: "", control: 0, leaks: 0, budget: 0, chaos: true },
     ],
   },
+  {
+    id: "happening-remise-medailles", category: "happening", title: "Cérémonie de Décorations Discrète",
+    description: "Une cérémonie interne, jamais rendue publique, décore les membres les plus méritants du programme.",
+    choices: [
+      { label: "Une cérémonie sobre et solennelle", outcome: "Moment de fierté partagée, discipline renforcée.", control: 6, leaks: 0, budget: -3000 },
+      { label: "Inviter quelques officiels extérieurs triés sur le volet", outcome: "Prestige renforcé, mais un invité pose trop de questions ensuite.", control: 4, leaks: 4, budget: -6000 },
+    ],
+  },
+  {
+    id: "happening-inspection-surprise", category: "happening", title: "Inspection Surprise du Pentagone",
+    description: "Une équipe d'inspection surgit sans préavis pour vérifier les conditions de stockage du matériel classifié.",
+    choices: [
+      { label: "Tout leur montrer, dossier impeccable à l'appui", outcome: "Inspection exemplaire, ta réputation grandit en interne.", control: 8, leaks: -2, budget: -5000 },
+      { label: "Retarder l'accès à certaines zones \"en travaux\"", outcome: "Ça passe cette fois, mais ça laisse une trace dans le rapport.", control: 1, leaks: 6, budget: 0 },
+    ],
+  },
+  {
+    id: "happening-nuit-observation", category: "happening", title: "Grande Nuit d'Observation",
+    description: "Une nuit particulièrement claire est jugée idéale pour une session d'observation exceptionnelle, ouverte à toute l'équipe.",
+    choices: [
+      { label: "Une session encadrée et méthodique", outcome: "Données précieuses collectées dans le calme.", control: 5, leaks: 0, budget: -4000 },
+      { label: "Inviter quelques scientifiques externes de confiance", outcome: "Collaboration enrichissante, mais un cercle plus large connaît maintenant certains détails.", control: 7, leaks: 5, budget: -8000 },
+    ],
+  },
 ];
 
 export function drawHappening(usedIds: string[] = []): { event: MandateEvent; usedIds: string[] } {
@@ -259,6 +315,41 @@ export function shouldTriggerHappening(): boolean {
 
 export function shouldTriggerSurpriseAudit(): boolean {
   return chance(0.05);
+}
+
+// ============================================================================
+// Factions — la confiance de chaque camp de la base (0-100, départ à 50) envers ta gestion du
+// confinement. Chaque opération déplace la confiance de tous les camps à la fois selon leur
+// affinité pour l'agressivité ou la discrétion, et la confiance moyenne pèse ensuite dans les
+// chances de survie d'un audit — un programme peut sembler personnellement maîtrisé mais tomber
+// quand même si tous les camps de la base se méfient de sa direction.
+// ============================================================================
+
+export interface Faction {
+  id: string;
+  label: string;
+  short: string;
+  lean: number; // -1 (déteste l'agressivité, aime la discrétion) à +1 (tolère/encourage l'agressivité) — pure fiction
+}
+
+export const FACTIONS: Faction[] = [
+  { id: "militaires", label: "Le Commandement Militaire", short: "Militaires", lean: 0.7 },
+  { id: "scientifiques", label: "L'Équipe Scientifique", short: "Sci.", lean: -0.6 },
+  { id: "politiques", label: "Les Politiques du Congrès", short: "Congrès", lean: -0.5 },
+  { id: "opinion-publique", label: "L'Opinion Publique (locale)", short: "Public", lean: -0.7 },
+  { id: "contractants", label: "Les Sous-Traitants Privés", short: "Contrat.", lean: 0.4 },
+];
+
+export const START_FACTION_CONFIDENCE = 50;
+
+export function applyFactionConfidence(confidence: Record<string, number>, approach: OpsApproach): Record<string, number> {
+  const next = { ...confidence };
+  const sign = approach === "agressive" ? 1 : -1;
+  for (const f of FACTIONS) {
+    const delta = Math.round(f.lean * sign * randInt(1, 4));
+    next[f.id] = Math.max(0, Math.min(100, (next[f.id] ?? START_FACTION_CONFIDENCE) + delta));
+  }
+  return next;
 }
 
 // ============================================================================
@@ -313,9 +404,9 @@ export interface OpResult {
 export function resolveOp(witness: Witness, approach: OpsApproach, bias = 1): OpResult {
   const successChance = 0.6 + (approach === "discrete" ? 0.06 : -0.04);
   const success = biasedChance(successChance, bias);
-  const budget = success ? -randInt(500, approach === "discrete" ? 4000 : 1500) : 0;
-  const control = success ? randInt(1, approach === "agressive" ? 5 : 3) : -randInt(0, 2);
-  const leaks = approach === "agressive" ? randInt(2, 6) : randInt(0, 2);
+  const budget = success ? -randInt(700, approach === "discrete" ? 6000 : 2200) : 0;
+  const control = success ? randInt(1, approach === "agressive" ? 6 : 3) : -randInt(0, 2);
+  const leaks = approach === "agressive" ? randInt(2, 7) : randInt(0, 2);
   const narrative = `${witness.label} — ${success ? `Confidentialité obtenue auprès de ${witness.pool}.` : `${witness.pool} refuse de coopérer.`}`;
   return { success, narrative, control, leaks, budget };
 }
@@ -355,7 +446,7 @@ export function resolveChaos(): ChaosResult {
 // ============================================================================
 
 export function bribeCost(program: Program): number {
-  return Math.round(ENTRY_COST * 1.5 * Math.max(1, TIER_MULTIPLIER[program.tier]));
+  return Math.round(ENTRY_COST * 2.2 * Math.max(1, TIER_MULTIPLIER[program.tier]));
 }
 
 const BRIBE_SUCCESS_LINES = [
@@ -379,9 +470,9 @@ export interface BribeResult {
 export function resolveBribe(bias = 1): BribeResult {
   const success = biasedChance(0.6, bias);
   if (success) {
-    return { success: true, control: randInt(5, 12), leaks: -randInt(15, 28), outcome: pick(BRIBE_SUCCESS_LINES) };
+    return { success: true, control: randInt(8, 18), leaks: -randInt(22, 40), outcome: pick(BRIBE_SUCCESS_LINES) };
   }
-  return { success: false, control: -randInt(20, 35), leaks: randInt(20, 35), outcome: pick(BRIBE_FAIL_LINES) };
+  return { success: false, control: -randInt(30, 50), leaks: randInt(30, 50), outcome: pick(BRIBE_FAIL_LINES) };
 }
 
 // ============================================================================
@@ -394,8 +485,9 @@ export interface AuditResult {
   leaksAfter: number;
 }
 
-export function resolveAudit(control: number, leaks: number, bias = 1): AuditResult {
-  const basis = control * 0.6 - leaks * 0.4;
+export function resolveAudit(control: number, leaks: number, bias = 1, avgFactionConfidence?: number): AuditResult {
+  const core = control * 0.6 - leaks * 0.4;
+  const basis = avgFactionConfidence !== undefined ? core * 0.7 + (avgFactionConfidence - 50) * 0.3 : core;
   const surviveChance = 0.25 + (Math.max(0, Math.min(100, basis + 50)) / 100) * 0.55;
   const survived = biasedChance(surviveChance, bias);
   const narrative = survived

@@ -23,8 +23,12 @@ import {
   drivesForSeason, resolveDrive, type RecruitTarget, type RecruitApproach,
   bribeCost, resolveBribe, resolveChaos, resolveRaid, computeOutcome,
   drawHappening, shouldTriggerHappening, shouldTriggerSurpriseRaid,
-  resolveGlobalExpansion,
+  resolveGlobalExpansion, FACTIONS, START_FACTION_CONFIDENCE, applyFactionConfidence,
 } from "../lib/sectEngine";
+
+function average(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
 
 const ITEM_WIDTH = 128;
 const ITEM_GAP = 8;
@@ -43,6 +47,7 @@ interface MandateState {
   influence: number;
   suspicion: number;
   dons: number;
+  factionConfidence: Record<string, number>;
   events: MandateEvent[];
   drives: RecruitTarget[];
   driveIndex: number;
@@ -143,6 +148,7 @@ export function Sect() {
     }
     setMandate({
       cult, turn: 0, influence: START_INFLUENCE, suspicion: START_SUSPICION, dons: 0,
+      factionConfidence: Object.fromEntries(FACTIONS.map((f) => [f.id, START_FACTION_CONFIDENCE])),
       events: drawMandateEvents(), drives: drivesForSeason(), driveIndex: 0,
       usedHappeningIds: [],
     });
@@ -191,11 +197,13 @@ export function Sect() {
     let newInfluence = Math.max(0, Math.min(100, mandate.influence + result.influence));
     let newSuspicion = Math.max(0, Math.min(100, mandate.suspicion + result.suspicion));
     const newDons = mandate.dons + result.dons;
+    const newFactionConfidence = applyFactionConfidence(mandate.factionConfidence, approach);
     let extraText = "";
     let raided = false;
 
     if (newSuspicion >= 75 || shouldTriggerSurpriseRaid()) {
-      const raid = resolveRaid(newInfluence, newSuspicion, winBias);
+      const avgConfidence = average(Object.values(newFactionConfidence));
+      const raid = resolveRaid(newInfluence, newSuspicion, winBias, avgConfidence);
       extraText += `\n\n${raid.narrative}`;
       if (raid.survived) {
         newSuspicion = raid.suspicionAfter;
@@ -212,7 +220,7 @@ export function Sect() {
         finalizeRound(mandate.cult, newInfluence, newDons, true, computeOutcome(mandate.cult, newInfluence, newDons, true));
         return;
       }
-      const carried = { ...mandate, influence: newInfluence, suspicion: newSuspicion, dons: newDons };
+      const carried = { ...mandate, influence: newInfluence, suspicion: newSuspicion, dons: newDons, factionConfidence: newFactionConfidence };
       const nextDriveIndex = mandate.driveIndex + 1;
       if (nextDriveIndex < mandate.drives.length) {
         let usedHappeningIds = mandate.usedHappeningIds;
@@ -273,7 +281,8 @@ export function Sect() {
     let raided = false;
 
     if (newSuspicion >= 75) {
-      const raid = resolveRaid(newInfluence, newSuspicion, winBias);
+      const avgConfidence = average(Object.values(mandate.factionConfidence));
+      const raid = resolveRaid(newInfluence, newSuspicion, winBias, avgConfidence);
       outcomeText += `\n\n${raid.narrative}`;
       if (raid.survived) {
         newSuspicion = raid.suspicionAfter;
@@ -343,7 +352,8 @@ export function Sect() {
     const nextTurn = mandate.turn + 1;
 
     if (newSuspicion >= 75) {
-      const raid = resolveRaid(newInfluence, newSuspicion, winBias);
+      const avgConfidence = average(Object.values(mandate.factionConfidence));
+      const raid = resolveRaid(newInfluence, newSuspicion, winBias, avgConfidence);
       outcomeText += `\n\n${raid.narrative}`;
       if (raid.survived) {
         newSuspicion = raid.suspicionAfter;
@@ -500,6 +510,25 @@ export function Sect() {
                       <p className="font-display text-sm font-bold text-emerald-400">{formatCredits(mandate.dons)}</p>
                     </div>
                   </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
+                  {FACTIONS.map((f) => {
+                    const v = mandate.factionConfidence[f.id] ?? 50;
+                    return (
+                      <span
+                        key={f.id}
+                        title={f.label}
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                          v >= 60 ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300" :
+                          v <= 35 ? "border-red-400/30 bg-red-500/10 text-red-300" :
+                          "border-white/10 bg-white/5 text-ice-200/60"
+                        )}
+                      >
+                        {f.short} {v}
+                      </span>
+                    );
+                  })}
                 </div>
               </Card>
 
