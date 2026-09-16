@@ -12,7 +12,7 @@ import { supabase } from "../lib/supabase";
 
 export interface HistoryEntry {
   id: string;
-  game: "Slots" | "Blackjack" | "Roulette" | "ChickenRoad" | "Plinko" | "Crash" | "ScratchCards" | "Bourse" | "Braquage" | "Boosters" | "Bonus" | "Cases" | "Pmu" | "Ministry" | "Club" | "Laundering" | "Darktable";
+  game: "Slots" | "Blackjack" | "Roulette" | "ChickenRoad" | "Plinko" | "Crash" | "ScratchCards" | "Bourse" | "Braquage" | "Boosters" | "Bonus" | "Cases" | "Pmu" | "Ministry" | "Club" | "Laundering" | "Darktable" | "Sect" | "Startup" | "Bookmaker";
   label: string;
   bet: number;
   payout: number;
@@ -265,14 +265,16 @@ export const useCasinoStore = create<CasinoState>()(
           set(remote);
           lastSyncedCredits = remote.credits;
         } else {
-          // Local is ahead on progress (this device has unsynced play), but credits specifically
-          // can move out-of-band — an admin grant, a gift, a marketplace sale — without touching
-          // totalWagered/totalWon at all. Always trust remote's credits even while otherwise
-          // pushing local up, so a grant made while this device was offline never gets clobbered.
-          const credits = remote?.credits ?? get().credits;
-          set({ credits });
-          lastSyncedCredits = credits;
+          // Local is ahead on progress — almost always just this device's own unsynced play (the
+          // debounced push in syncToCloud hadn't fired yet when the tab closed/refreshed), NOT an
+          // external grant. Pulling remote's credits here was tried and reverted: it clobbered the
+          // player's own just-earned winnings with the stale pre-sync remote value on nearly every
+          // refresh. Out-of-band credit changes (admin grants, gifts, marketplace sales) while this
+          // device is online are instead caught live by subscribeToCloud below; a grant landing
+          // while fully offline AND local happens to be ahead in progress at next login is the one
+          // narrow gap this leaves, same as before this file was touched this session.
           await supabase.from("casino_progress").upsert({ user_id: userId, state: JSON.parse(JSON.stringify(get())), updated_at: new Date().toISOString() });
+          lastSyncedCredits = get().credits;
         }
       },
 

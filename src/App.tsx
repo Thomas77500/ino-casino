@@ -45,6 +45,9 @@ const Club = lazy(() => import("./pages/Club").then((m) => ({ default: m.Club })
 const Laundering = lazy(() => import("./pages/Laundering").then((m) => ({ default: m.Laundering })));
 const Blackmarket = lazy(() => import("./pages/Blackmarket").then((m) => ({ default: m.Blackmarket })));
 const Darktable = lazy(() => import("./pages/Darktable").then((m) => ({ default: m.Darktable })));
+const Sect = lazy(() => import("./pages/Sect").then((m) => ({ default: m.Sect })));
+const Startup = lazy(() => import("./pages/Startup").then((m) => ({ default: m.Startup })));
+const Bookmaker = lazy(() => import("./pages/Bookmaker").then((m) => ({ default: m.Bookmaker })));
 const Bonus = lazy(() => import("./pages/Bonus").then((m) => ({ default: m.Bonus })));
 const Rewards = lazy(() => import("./pages/Rewards").then((m) => ({ default: m.Rewards })));
 const Leaderboard = lazy(() => import("./pages/Leaderboard").then((m) => ({ default: m.Leaderboard })));
@@ -74,6 +77,9 @@ const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = 
   laundering: () => <Laundering />,
   blackmarket: () => <Blackmarket />,
   darktable: () => <Darktable />,
+  sect: () => <Sect />,
+  startup: () => <Startup />,
+  bookmaker: () => <Bookmaker />,
   bonus: () => <Bonus />,
   rewards: () => <Rewards />,
   leaderboard: () => <Leaderboard />,

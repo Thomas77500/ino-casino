@@ -26,6 +26,9 @@ export const GAME_LABELS: Record<string, string> = {
   laundering: "Blanchiment",
   blackmarket: "Marché Noir",
   darktable: "Table Clandestine",
+  sect: "Gourou",
+  startup: "Licorne Frauduleuse",
+  bookmaker: "Bookmaker Clandestin",
 };
 
 interface GameStatusState {

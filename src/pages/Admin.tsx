@@ -107,6 +107,18 @@ export function Admin() {
     refreshUsers();
   }
 
+  async function resetCredits(user: AdminUser, amount: number) {
+    const { data } = await supabase.from("casino_progress").select("state").eq("user_id", user.id).maybeSingle();
+    const state = { ...(data?.state ?? {}), credits: amount };
+    const { error } = await supabase.from("casino_progress").upsert({ user_id: user.id, state, updated_at: new Date().toISOString() });
+    if (error) {
+      push({ kind: "info", title: "Échec de la remise à zéro", description: error.message });
+      return;
+    }
+    push({ kind: "info", title: `${user.username} — crédits remis à ${formatCredits(amount)}` });
+    refreshUsers();
+  }
+
   async function toggleBan(user: AdminUser) {
     const { error } = await supabase.from("profiles").update({ banned: !user.banned }).eq("id", user.id);
     if (error) {
@@ -295,6 +307,12 @@ export function Admin() {
                 </Button>
                 <Button size="sm" variant={u.banned ? "gold" : "secondary"} onClick={() => toggleBan(u)}>
                   {u.banned ? "Réactiver" : "Bannir"}
+                </Button>
+                <Button size="sm" variant="ghost" className="text-red-400" onClick={() => resetCredits(u, 0)}>
+                  Reset → 0
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => resetCredits(u, 100_000)}>
+                  Reset → 100k
                 </Button>
               </div>
             </Card>

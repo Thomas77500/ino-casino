@@ -26,6 +26,9 @@ import {
   IconWasher,
   IconMask,
   IconDice,
+  IconCultEye,
+  IconUnicorn,
+  IconTicketOdds,
 } from "../components/icons";
 
 export type AppTab =
@@ -48,6 +51,9 @@ export type AppTab =
   | "laundering"
   | "blackmarket"
   | "darktable"
+  | "sect"
+  | "startup"
+  | "bookmaker"
   | "bonus"
   | "rewards"
   | "leaderboard"
@@ -77,6 +83,9 @@ export const GAMES: { id: AppTab; label: string; icon: ComponentType<SVGProps<SV
   { id: "club", label: "Président de Club", icon: IconFootball, blurb: "Roulette de reprise puis présidence de 5 saisons — débloqué à 35M de gains cumulés.", tag: "Secret" },
   { id: "blackmarket", label: "Marché Noir", icon: IconMask, blurb: "Boutique, collection et échanges entre joueurs — débloqué à 15M de gains cumulés.", tag: "Secret" },
   { id: "darktable", label: "Table Clandestine", icon: IconDice, blurb: "Une table partagée par tous les joueurs en temps réel — extrais avant le crash.", tag: "Nouveau" },
+  { id: "sect", label: "Gourou", icon: IconCultEye, blurb: "Roulette de fondation puis 5 saisons de recrutement — débloqué à 45M de gains cumulés.", tag: "Secret" },
+  { id: "startup", label: "Licorne Frauduleuse", icon: IconUnicorn, blurb: "Lève des tours de table, pivote, gonfle la hype — débloqué à 40M de gains cumulés.", tag: "Secret" },
+  { id: "bookmaker", label: "Bookmaker Clandestin", icon: IconTicketOdds, blurb: "Fixe les cotes, encaisse les mises, gère les mauvais payeurs.", tag: "Nouveau" },
 ];
 
 export const TABS: { id: AppTab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; adminOnly?: boolean }[] = [
@@ -112,4 +121,7 @@ export const GATED_GAME_IDS: Partial<Record<AppTab, string>> = {
   laundering: "laundering",
   blackmarket: "blackmarket",
   darktable: "darktable",
+  sect: "sect",
+  startup: "startup",
+  bookmaker: "bookmaker",
 };

@@ -113,3 +113,12 @@ export const IconMask = (p: SVGProps<SVGSVGElement>) => (
 export const IconDice = (p: SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><rect x="4" y="4" width="16" height="16" rx="3" /><circle cx="8.5" cy="8.5" r="1" fill="currentColor" /><circle cx="15.5" cy="8.5" r="1" fill="currentColor" /><circle cx="8.5" cy="15.5" r="1" fill="currentColor" /><circle cx="15.5" cy="15.5" r="1" fill="currentColor" /><circle cx="12" cy="12" r="1" fill="currentColor" /></svg>
 );
+export const IconCultEye = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M12 3 3 19h18Z" /><path d="M12 10.5c-2.2 0-3.8 1.6-4.6 3 .8 1.4 2.4 3 4.6 3s3.8-1.6 4.6-3c-.8-1.4-2.4-3-4.6-3Z" /><circle cx="12" cy="13.5" r="1.3" fill="currentColor" /></svg>
+);
+export const IconUnicorn = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M4 21c1-5 4-8 8-8s7 2 8 4" /><path d="M12 13V6l3-3 .5 3-2.5 2" /><circle cx="9.5" cy="14.5" r="0.6" fill="currentColor" /><path d="M4 21c0-2 1-3 2.5-3" /></svg>
+);
+export const IconTicketOdds = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.5a1.7 1.7 0 0 0 0 3V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.5a1.7 1.7 0 0 0 0-3Z" /><path d="M9 6v10" strokeDasharray="1.8 1.8" /></svg>
+);
