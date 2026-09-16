@@ -19,6 +19,7 @@ import {
   MINISTRIES, drawMinistry, randomDecoyMinistry, type Ministry as MinistryDef,
   UNLOCK_TOTAL_WON, ENTRY_COST, MANDATE_LENGTH, START_POPULARITY,
   drawMandateEvents, type MandateEvent, CATEGORY_LABEL,
+  billsForYear, resolveVote, resolveBribeLeak, type Bill, type VoteChoice,
   bribeCost, resolveBribe, resolveChaos, resolveCensureMotion, computeOutcome,
 } from "../lib/ministryEngine";
 
@@ -31,7 +32,7 @@ const WINNING_INDEX = 50;
 const SPIN_DURATION = 5.5;
 
 type View = "mandat" | "palmares" | "salon";
-type Phase = "idle" | "spinning" | "event" | "recap";
+type Phase = "idle" | "spinning" | "votes" | "event" | "recap";
 
 interface MandateState {
   ministry: MinistryDef;
@@ -40,6 +41,8 @@ interface MandateState {
   treasury: number;
   events: MandateEvent[];
   startYear: number;
+  bills: Bill[];
+  billIndex: number;
 }
 
 interface RoundResult {
@@ -143,8 +146,12 @@ export function Ministry() {
       return;
     }
     const startYear = new Date().getFullYear();
-    setMandate({ ministry, turn: 0, popularity: START_POPULARITY, treasury: 0, events: drawMandateEvents(startYear), startYear });
-    setPhase("event");
+    setMandate({
+      ministry, turn: 0, popularity: START_POPULARITY, treasury: 0,
+      events: drawMandateEvents(startYear), startYear,
+      bills: billsForYear(ministry), billIndex: 0,
+    });
+    setPhase("votes");
   }
 
   function spin() {
@@ -184,6 +191,50 @@ export function Ministry() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
+
+  function voteBill(choice: VoteChoice | "bribe") {
+    if (!mandate || resolving) return;
+    const bill = mandate.bills[mandate.billIndex];
+    const vote: VoteChoice = choice === "bribe" ? bill.bribeOffer!.direction : choice;
+    let extraText = "";
+    let extraPenalty = 0;
+
+    if (choice === "bribe") {
+      const offer = bill.bribeOffer!;
+      award(offer.amount);
+      push({ kind: "success", title: `Enveloppe acceptée — +${formatCredits(offer.amount)} crédits` });
+      const leak = resolveBribeLeak(winBias);
+      if (leak.leaked) {
+        extraText = "\n💰 L'enveloppe a été repérée par un journaliste.";
+        extraPenalty = leak.popularityPenalty;
+      }
+    }
+
+    const result = resolveVote(bill, vote, winBias);
+    const newPopularity = Math.max(0, Math.min(100, mandate.popularity + result.popularity - extraPenalty));
+    const newTreasury = mandate.treasury + result.treasury;
+
+    setResolving(true);
+    setLastOutcome(result.narrative + extraText);
+
+    setTimeout(() => {
+      if (newPopularity <= 0) {
+        finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, true), true);
+        return;
+      }
+      const nextBillIndex = mandate.billIndex + 1;
+      if (nextBillIndex < mandate.bills.length) {
+        setMandate({ ...mandate, billIndex: nextBillIndex, popularity: newPopularity, treasury: newTreasury });
+        setLastOutcome(null);
+        setResolving(false);
+      } else {
+        setMandate({ ...mandate, popularity: newPopularity, treasury: newTreasury });
+        setLastOutcome(null);
+        setResolving(false);
+        setPhase("event");
+      }
+    }, 1100);
+  }
 
   function choose(choice: "a" | "b" | "bribe") {
     if (!mandate || resolving) return;
@@ -246,9 +297,13 @@ export function Ministry() {
       if (censured || nextTurn >= MANDATE_LENGTH) {
         finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, censured), censured);
       } else {
-        setMandate({ ...mandate, turn: nextTurn, popularity: newPopularity, treasury: newTreasury });
+        setMandate({
+          ...mandate, turn: nextTurn, popularity: newPopularity, treasury: newTreasury,
+          bills: billsForYear(mandate.ministry), billIndex: 0,
+        });
         setLastOutcome(null);
         setResolving(false);
+        setPhase("votes");
       }
     }, outcomeText.includes("Motion de censure") ? 3200 : 2000);
   }
@@ -275,6 +330,7 @@ export function Ministry() {
   }
 
   const event = mandate?.events[mandate.turn] ?? null;
+  const currentBill = mandate?.bills[mandate.billIndex] ?? null;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
@@ -309,7 +365,8 @@ export function Ministry() {
               </div>
               <p className="mt-4 text-sm text-ice-200/60">
                 Tourne la roulette de nomination. Selon la case, tu prends un portefeuille pour {MANDATE_LENGTH} ans —
-                polémiques, dérives, coups de folie et dossiers sérieux au menu. Popularité à zéro = motion de censure.
+                15 à 20 votes de lois de finances par année, un grand événement, et une motion de censure jamais loin
+                si ta popularité s'effondre.
               </p>
               <div className="mt-6 flex justify-center">
                 <Button size="lg" onClick={spin} disabled={spinning || credits < ENTRY_COST}>
@@ -332,7 +389,7 @@ export function Ministry() {
             </Card>
           )}
 
-          {phase === "event" && mandate && event && (
+          {(phase === "votes" || phase === "event") && mandate && (
             <div className="flex flex-col gap-4">
               <Card className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -358,31 +415,75 @@ export function Ministry() {
                 </div>
               </Card>
 
-              <Card className="p-4 sm:p-6" glow>
-                <div className="mb-3 flex items-center gap-2">
-                  <Badge tone={CATEGORY_TONE[event.category]}>{CATEGORY_LABEL[event.category]}</Badge>
-                </div>
-                <h2 className="font-display text-lg font-bold text-white">{event.title}</h2>
-                <p className="mt-2 text-sm text-ice-200/70">{event.description}</p>
-
-                {lastOutcome !== null ? (
-                  <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
-                    {lastOutcome}
-                  </motion.div>
-                ) : (
-                  <div className="mt-5 flex flex-col gap-2">
-                    <Button variant="secondary" onClick={() => choose("a")} disabled={resolving} className="w-full">
-                      {event.choices[0].label}
-                    </Button>
-                    <Button variant="secondary" onClick={() => choose("b")} disabled={resolving} className="w-full">
-                      {event.choices[1].label}
-                    </Button>
-                    <Button variant="gold" onClick={() => choose("bribe")} disabled={resolving || credits < bribeCost(mandate.ministry)} className="w-full">
-                      💰 Soudoyer — {formatCredits(bribeCost(mandate.ministry))}
-                    </Button>
+              {phase === "votes" && currentBill && (
+                <Card className="p-4 sm:p-6" glow>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <Badge tone={currentBill.direction === "hausse" ? "danger" : "success"}>
+                      {currentBill.direction === "hausse" ? "Hausse" : "Baisse"}
+                    </Badge>
+                    <span className="text-xs text-ice-200/40">Vote {mandate.billIndex + 1}/{mandate.bills.length}</span>
                   </div>
-                )}
-              </Card>
+                  <h2 className="font-display text-lg font-bold text-white">{currentBill.title}</h2>
+                  <p className="mt-2 text-sm text-ice-200/70">
+                    Impact estimé : {currentBill.amountMdEur} Md€ — touche surtout {currentBill.topic.affected}.
+                  </p>
+
+                  {currentBill.bribeOffer && lastOutcome === null && (
+                    <p className="mt-3 rounded-lg border border-gold-400/30 bg-gold-500/10 p-2.5 text-xs text-gold-300">
+                      💰 Le Premier ministre te propose {formatCredits(currentBill.bribeOffer.amount)} crédits pour voter{" "}
+                      {currentBill.bribeOffer.direction === "pour" ? "POUR" : "CONTRE"}.
+                    </p>
+                  )}
+
+                  {lastOutcome !== null ? (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
+                      {lastOutcome}
+                    </motion.div>
+                  ) : (
+                    <div className="mt-5 flex gap-2">
+                      <Button variant="secondary" onClick={() => voteBill("pour")} disabled={resolving} className="flex-1">
+                        Pour
+                      </Button>
+                      <Button variant="secondary" onClick={() => voteBill("contre")} disabled={resolving} className="flex-1">
+                        Contre
+                      </Button>
+                      {currentBill.bribeOffer && (
+                        <Button variant="gold" onClick={() => voteBill("bribe")} disabled={resolving} className="flex-1">
+                          💰 Accepter
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {phase === "event" && event && (
+                <Card className="p-4 sm:p-6" glow>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Badge tone={CATEGORY_TONE[event.category]}>{CATEGORY_LABEL[event.category]}</Badge>
+                  </div>
+                  <h2 className="font-display text-lg font-bold text-white">{event.title}</h2>
+                  <p className="mt-2 text-sm text-ice-200/70">{event.description}</p>
+
+                  {lastOutcome !== null ? (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
+                      {lastOutcome}
+                    </motion.div>
+                  ) : (
+                    <div className="mt-5 flex flex-col gap-2">
+                      <Button variant="secondary" onClick={() => choose("a")} disabled={resolving} className="w-full">
+                        {event.choices[0].label}
+                      </Button>
+                      <Button variant="secondary" onClick={() => choose("b")} disabled={resolving} className="w-full">
+                        {event.choices[1].label}
+                      </Button>
+                      <Button variant="gold" onClick={() => choose("bribe")} disabled={resolving || credits < bribeCost(mandate.ministry)} className="w-full">
+                        💰 Soudoyer — {formatCredits(bribeCost(mandate.ministry))}
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              )}
             </div>
           )}
 

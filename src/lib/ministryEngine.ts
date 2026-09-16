@@ -1,4 +1,4 @@
-import { biasedWeightedPick, biasedChance, randInt, pick, type Weighted } from "./rng";
+import { biasedWeightedPick, biasedChance, chance, randInt, pick, type Weighted } from "./rng";
 
 // ============================================================================
 // L'Arc Ministériel — 100% fictif, personnages et institutions inventés. Débloqué comme la
@@ -338,6 +338,122 @@ export function drawMandateEvents(startYear: number = new Date().getFullYear()):
     else events.push(shuffled[poolIdx++]);
   }
   return events;
+}
+
+// ============================================================================
+// Votes législatifs — inspiré de "La Bataille du Budget" : chaque année, l'Assemblée enchaîne
+// 15 à 20 textes de loi (taxes/détaxes) générés à la volée sur un pool de sujets, votés un par un
+// en Pour/Contre, avec un résultat de vote immédiat et un impact sur la popularité. Certains textes
+// s'accompagnent d'une enveloppe du Premier ministre : accepter force le vote dans le sens demandé
+// contre des crédits réels, avec un risque de fuite.
+// ============================================================================
+
+export const VOTES_PER_YEAR_MIN = 15;
+export const VOTES_PER_YEAR_MAX = 20;
+
+export interface BillTopic {
+  id: string;
+  hausseTitle: string;
+  baisseTitle: string;
+  affected: string;
+}
+
+export const BILL_TOPICS: BillTopic[] = [
+  { id: "carburant", hausseTitle: "Hausse de la taxe sur le carburant", baisseTitle: "Baisse de la taxe sur le carburant", affected: "les automobilistes" },
+  { id: "tabac", hausseTitle: "Hausse du prix du tabac", baisseTitle: "Gel du prix du tabac", affected: "les buralistes" },
+  { id: "alcool", hausseTitle: "Hausse des droits sur l'alcool", baisseTitle: "Baisse des droits sur l'alcool", affected: "les viticulteurs" },
+  { id: "entreprises", hausseTitle: "Hausse de l'impôt sur les sociétés", baisseTitle: "Baisse de l'impôt sur les sociétés", affected: "le patronat" },
+  { id: "heritage", hausseTitle: "Hausse des droits de succession", baisseTitle: "Baisse des droits de succession", affected: "les héritiers" },
+  { id: "immobilier", hausseTitle: "Hausse de la taxe foncière", baisseTitle: "Baisse de la taxe foncière", affected: "les propriétaires" },
+  { id: "gafa", hausseTitle: "Taxe GAFA renforcée", baisseTitle: "Allègement de la taxe GAFA", affected: "les géants du numérique" },
+  { id: "agriculteurs", hausseTitle: "Hausse des cotisations agricoles", baisseTitle: "Exonération de cotisations agricoles", affected: "les agriculteurs" },
+  { id: "hauts-revenus", hausseTitle: "Nouvelle tranche d'impôt pour les hauts revenus", baisseTitle: "Plafonnement de l'impôt sur le revenu", affected: "les hauts revenus" },
+  { id: "tva", hausseTitle: "Hausse d'un point de TVA", baisseTitle: "TVA réduite sur les produits de première nécessité", affected: "tous les consommateurs" },
+  { id: "automobile", hausseTitle: "Malus renforcé sur les grosses cylindrées", baisseTitle: "Suppression du malus écologique", affected: "les automobilistes" },
+  { id: "streaming", hausseTitle: "Taxe sur les plateformes de streaming", baisseTitle: "Suppression de la taxe streaming", affected: "les plateformes" },
+  { id: "crypto", hausseTitle: "Taxation renforcée des plus-values crypto", baisseTitle: "Régime fiscal allégé pour la crypto", affected: "les investisseurs" },
+  { id: "jeux-argent", hausseTitle: "Hausse de la taxe sur les jeux d'argent", baisseTitle: "Baisse de la taxe sur les jeux d'argent", affected: "les casinos en ligne" },
+  { id: "tourisme", hausseTitle: "Hausse de la taxe de séjour", baisseTitle: "Suppression de la taxe de séjour", affected: "les hôteliers" },
+  { id: "cantines", hausseTitle: "Hausse du tarif des cantines scolaires", baisseTitle: "Cantines à un euro généralisées", affected: "les familles" },
+  { id: "fonctionnaires", hausseTitle: "Gel du point d'indice des fonctionnaires", baisseTitle: "Dégel et revalorisation du point d'indice", affected: "les fonctionnaires" },
+  { id: "retraites", hausseTitle: "Report de l'âge de départ à la retraite", baisseTitle: "Retour à la retraite à 62 ans", affected: "les retraités" },
+  { id: "peages", hausseTitle: "Hausse des péages autoroutiers", baisseTitle: "Gel des péages autoroutiers", affected: "les usagers de l'autoroute" },
+  { id: "niches", hausseTitle: "Suppression d'une niche fiscale sectorielle", baisseTitle: "Création d'une niche fiscale sectorielle", affected: "les lobbys concernés" },
+];
+
+export type BillDirection = "hausse" | "baisse";
+export type VoteChoice = "pour" | "contre";
+
+export interface BribeOffer {
+  direction: VoteChoice;
+  amount: number;
+}
+
+export interface Bill {
+  topic: BillTopic;
+  direction: BillDirection;
+  title: string;
+  amountMdEur: number; // pur habillage narratif, sans lien mécanique avec la trésorerie
+  bribeOffer: BribeOffer | null;
+}
+
+export function generateBill(ministry: Ministry): Bill {
+  const topic = pick(BILL_TOPICS);
+  const direction: BillDirection = chance(0.5) ? "hausse" : "baisse";
+  const bribeOffer: BribeOffer | null = chance(0.3)
+    ? { direction: chance(0.5) ? "pour" : "contre", amount: Math.round(bribeCost(ministry) * (0.5 + Math.random())) }
+    : null;
+  return {
+    topic,
+    direction,
+    title: direction === "hausse" ? topic.hausseTitle : topic.baisseTitle,
+    amountMdEur: Math.round((0.4 + Math.random() * 4.6) * 10) / 10,
+    bribeOffer,
+  };
+}
+
+export function billsForYear(ministry: Ministry): Bill[] {
+  const count = randInt(VOTES_PER_YEAR_MIN, VOTES_PER_YEAR_MAX);
+  return Array.from({ length: count }, () => generateBill(ministry));
+}
+
+export interface VoteResult {
+  passed: boolean;
+  votesFor: number;
+  narrative: string;
+  popularity: number;
+  treasury: number;
+}
+
+// The player's own vote nudges the Assembly's odds (government whip effect) without deciding the
+// outcome outright — voting "pour" makes passage likelier, "contre" makes it less likely.
+export function resolveVote(bill: Bill, vote: VoteChoice, bias = 1): VoteResult {
+  const supportChance = 0.42 + (vote === "pour" ? 0.16 : -0.16);
+  const passed = biasedChance(supportChance, bias);
+  const votesFor = passed ? randInt(289, 360) : randInt(210, 288);
+
+  const magnitude = passed ? 1 : 0.4; // a bill that never passed anyway barely registers
+  const directionSign = bill.direction === "baisse" ? 1 : -1; // cuts play well, hikes don't
+  const voteSign = vote === "pour" ? 1 : -1;
+  let popularity = Math.round(directionSign * voteSign * randInt(2, 5) * magnitude);
+  // Backing a bill that fails looks weak; opposing one that passes anyway looks powerless.
+  if ((vote === "pour") !== passed) popularity -= randInt(0, 2);
+
+  const treasury = passed ? (bill.direction === "hausse" ? randInt(4, 9) : -randInt(4, 9)) : 0;
+  const narrative = `${bill.title} — ${votesFor}/577 voix pour, ${passed ? "adoptée" : "rejetée"}.`;
+  return { passed, votesFor, narrative, popularity, treasury };
+}
+
+// 18% base chance an accepted envelope gets noticed by the press — same admin bias knob as every
+// other risk roll in this game.
+export interface BribeLeakResult {
+  leaked: boolean;
+  popularityPenalty: number;
+}
+
+export function resolveBribeLeak(bias = 1): BribeLeakResult {
+  const leaked = !biasedChance(0.82, bias);
+  return { leaked, popularityPenalty: leaked ? randInt(10, 20) : 0 };
 }
 
 // ============================================================================
