@@ -6,7 +6,7 @@ import { biasedWeightedPick, biasedChance, randInt, pick, type Weighted } from "
 // ============================================================================
 
 export const UNLOCK_TOTAL_WON = 25_000_000;
-export const ENTRY_COST = 3_000;
+export const ENTRY_COST = 50_000;
 
 export interface Ministry {
   id: string;
@@ -17,7 +17,7 @@ export interface Ministry {
   accent: string;
 }
 
-const TIER_MULTIPLIER: Record<Ministry["tier"], number> = { 0: 0, 1: 1, 2: 1.6, 3: 2.3, 4: 3.2 };
+const TIER_MULTIPLIER: Record<Ministry["tier"], number> = { 0: 0, 1: 1, 2: 1.8, 3: 2.6, 4: 4.5 };
 
 export const MINISTRIES: Ministry[] = [
   { id: "agriculture", label: "Agriculture & Terroir", glyph: "🌾", weight: 15, tier: 1, accent: "from-amber-600 to-amber-800" },
@@ -60,7 +60,7 @@ export interface MandateChoice {
 
 export interface MandateEvent {
   id: string;
-  category: "polemique" | "derive" | "fun" | "serieux";
+  category: "polemique" | "derive" | "fun" | "serieux" | "vote" | "election";
   title: string;
   description: string;
   choices: [MandateChoice, MandateChoice];
@@ -71,6 +71,8 @@ export const CATEGORY_LABEL: Record<MandateEvent["category"], string> = {
   derive: "Dérive",
   fun: "Fun",
   serieux: "Sérieux",
+  vote: "Vote",
+  election: "Élection",
 };
 
 export const EVENT_POOL: MandateEvent[] = [
@@ -257,11 +259,85 @@ export const EVENT_POOL: MandateEvent[] = [
       { label: "L'enterrer discrètement", outcome: "Tranquille pour l'instant, le problème reste entier.", popularity: 6, treasury: -8 },
     ],
   },
+
+  // --- Votes budgétaires ---
+  {
+    id: "vote-budget-annuel", category: "vote", title: "Vote du Budget Annuel",
+    description: "L'Assemblée doit voter le budget de ton ministère pour l'année à venir.",
+    choices: [
+      { label: "Défendre un budget ambitieux", outcome: "Le budget passe, les services publics respirent un peu.", popularity: 8, treasury: -25 },
+      { label: "Proposer un budget resserré", outcome: "Le budget passe, mais Bercy est le seul content.", popularity: -6, treasury: 20 },
+    ],
+  },
+  {
+    id: "rallonge-hopital", category: "vote", title: "Rallonge pour l'Hôpital Public",
+    description: "Les urgences de ta région craquent. Une rallonge budgétaire est demandée dans l'urgence.",
+    choices: [
+      { label: "Voter la rallonge immédiatement", outcome: "Un vrai soulagement sur le terrain.", popularity: 11, treasury: -22 },
+      { label: "Renvoyer le dossier en commission", outcome: "Le temps perdu se voit, et se paie.", popularity: -13, treasury: 6 },
+    ],
+  },
+  {
+    id: "niche-fiscale", category: "vote", title: "Niche Fiscale Contestée",
+    description: "Un rapport pointe une niche fiscale qui profite surtout à une poignée de grandes entreprises.",
+    choices: [
+      { label: "La supprimer", outcome: "Bien accueilli, sauf par quelques amis très puissants.", popularity: 5, treasury: 18 },
+      { label: "La maintenir, le temps d'étudier", outcome: "Ça sent le service rendu, tout le monde l'a vu.", popularity: -9, treasury: -4 },
+    ],
+  },
+  {
+    id: "plan-relance", category: "vote", title: "Plan de Relance Express",
+    description: "Une opportunité de relance économique se présente, mais elle coûte cher — et vite.",
+    choices: [
+      { label: "Foncer, quitte à emprunter", outcome: "L'effet d'annonce est énorme, la facture aussi.", popularity: 14, treasury: -28 },
+      { label: "Étaler la dépense sur trois ans", outcome: "Plus sage, beaucoup moins spectaculaire.", popularity: 2, treasury: -10 },
+    ],
+  },
+  {
+    id: "gel-depenses", category: "vote", title: "Gel des Dépenses",
+    description: "Bercy exige un gel immédiat de toutes les dépenses non-essentielles de ton ministère.",
+    choices: [
+      { label: "Appliquer le gel à la lettre", outcome: "Les comptes remontent, le terrain grogne.", popularity: -10, treasury: 16 },
+      { label: "Trouver des exceptions créatives", outcome: "Petits arrangements, personne ne s'en aperçoit... pour l'instant.", popularity: 4, treasury: -6 },
+    ],
+  },
+  {
+    id: "credits-rectificatifs", category: "vote", title: "Crédits Rectificatifs",
+    description: "Un vote rectificatif propose de revoir à la baisse les crédits alloués à ton administration.",
+    choices: [
+      { label: "Voter pour, en solidarité gouvernementale", outcome: "Discipline de groupe, sans plus.", popularity: 0, treasury: -15 },
+      { label: "S'abstenir publiquement", outcome: "L'abstention fait jaser jusque dans ton propre camp.", popularity: -7, treasury: 8 },
+    ],
+  },
 ];
 
-export function drawMandateEvents(): MandateEvent[] {
+// Moment fixe, hors tirage aléatoire — placé sur l'année civile réelle 2027 quand le mandat la
+// couvre (voir drawMandateEvents). Un remaniement plane sur tout le gouvernement, indépendamment
+// du portefeuille tenu.
+export const ELECTION_2027_EVENT: MandateEvent = {
+  id: "election-2027",
+  category: "election",
+  title: "Élections Présidentielles 2027",
+  description: "Le pays vote. Un remaniement ministériel plane sur tout le gouvernement, quel que soit le résultat.",
+  choices: [
+    { label: "Faire campagne à fond pour la majorité sortante", outcome: "Tu tiens ton poste — la nouvelle équipe te reconduit, de justesse.", popularity: 12, treasury: -20 },
+    { label: "Rester en retrait, ne pas prendre parti", outcome: "Discret, tu passes sous les radars du remaniement.", popularity: -4, treasury: 5 },
+  ],
+};
+
+// The 2027 election lands on whichever mandate year matches that real calendar year. If the
+// mandate starts after 2031 it never falls within the 5 years — the slot silently reverts to a
+// normal random draw instead of forcing a now-meaningless date.
+export function drawMandateEvents(startYear: number = new Date().getFullYear()): MandateEvent[] {
+  const electionTurnIndex = 2027 - startYear;
   const shuffled = [...EVENT_POOL].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, MANDATE_LENGTH);
+  const events: MandateEvent[] = [];
+  let poolIdx = 0;
+  for (let i = 0; i < MANDATE_LENGTH; i++) {
+    if (i === electionTurnIndex) events.push(ELECTION_2027_EVENT);
+    else events.push(shuffled[poolIdx++]);
+  }
+  return events;
 }
 
 // ============================================================================
@@ -326,6 +402,29 @@ export function resolveChaos(): ChaosResult {
   const roll = randInt(-35, 45);
   const good = roll > 5;
   return { popularity: roll, treasury: -randInt(10, 25), outcome: pick(good ? CHAOS_GOOD_LINES : CHAOS_BAD_LINES), good };
+}
+
+// ============================================================================
+// Motion de censure — se déclenche à la fin de tout tour où la popularité finit à 30 ou moins
+// (mais pas encore à zéro, qui reste une chute immédiate sans vote). Chances de survie
+// proportionnelles à la popularité restante, mêmes 577 sièges et seuil de 289 voix que la vraie
+// Assemblée nationale — pur décor, aucun rapport avec un fait réel.
+// ============================================================================
+
+export interface CensureResult {
+  survived: boolean;
+  narrative: string;
+  popularityPenalty: number;
+}
+
+export function resolveCensureMotion(popularity: number, bias = 1): CensureResult {
+  const surviveChance = 0.3 + (Math.max(0, Math.min(100, popularity)) / 100) * 0.6;
+  const survived = biasedChance(surviveChance, bias);
+  const votesForCensure = survived ? randInt(220, 288) : randInt(289, 344);
+  const narrative = survived
+    ? `Motion de censure déposée — ${votesForCensure}/577 voix pour, il en fallait 289. Le gouvernement survit, de justesse.`
+    : `Motion de censure déposée — ${votesForCensure}/577 voix pour. La motion est adoptée. Le gouvernement tombe.`;
+  return { survived, narrative, popularityPenalty: survived ? randInt(3, 8) : 0 };
 }
 
 // ============================================================================

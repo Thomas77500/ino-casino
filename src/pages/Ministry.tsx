@@ -19,7 +19,7 @@ import {
   MINISTRIES, drawMinistry, randomDecoyMinistry, type Ministry as MinistryDef,
   UNLOCK_TOTAL_WON, ENTRY_COST, MANDATE_LENGTH, START_POPULARITY,
   drawMandateEvents, type MandateEvent, CATEGORY_LABEL,
-  bribeCost, resolveBribe, resolveChaos, computeOutcome,
+  bribeCost, resolveBribe, resolveChaos, resolveCensureMotion, computeOutcome,
 } from "../lib/ministryEngine";
 
 const ITEM_WIDTH = 128;
@@ -39,6 +39,7 @@ interface MandateState {
   popularity: number;
   treasury: number;
   events: MandateEvent[];
+  startYear: number;
 }
 
 interface RoundResult {
@@ -50,11 +51,13 @@ interface RoundResult {
   censured: boolean;
 }
 
-const CATEGORY_TONE: Record<MandateEvent["category"], "danger" | "gold" | "electric" | "neutral"> = {
+const CATEGORY_TONE: Record<MandateEvent["category"], "danger" | "gold" | "electric" | "neutral" | "success"> = {
   polemique: "danger",
   derive: "gold",
   fun: "electric",
   serieux: "neutral",
+  vote: "success",
+  election: "gold",
 };
 
 function MiniStat({ label, value }: { label: string; value: string }) {
@@ -98,6 +101,7 @@ export function Ministry() {
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
   const [result, setResult] = useState<RoundResult | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const pendingWinnerRef = useRef<MinistryDef | null>(null);
 
   const unlocked = totalWon >= UNLOCK_TOTAL_WON;
 
@@ -138,7 +142,8 @@ export function Ministry() {
       finalizeRound(ministry, 0, 0, computeOutcome(ministry, 0, 0, false), false);
       return;
     }
-    setMandate({ ministry, turn: 0, popularity: START_POPULARITY, treasury: 0, events: drawMandateEvents() });
+    const startYear = new Date().getFullYear();
+    setMandate({ ministry, turn: 0, popularity: START_POPULARITY, treasury: 0, events: drawMandateEvents(startYear), startYear });
     setPhase("event");
   }
 
@@ -153,18 +158,32 @@ export function Ministry() {
 
     const winner = drawMinistry(winBias);
     const strip = Array.from({ length: REEL_LENGTH }, (_, i) => (i === WINNING_INDEX ? winner : randomDecoyMinistry()));
+    pendingWinnerRef.current = winner;
     setReel(strip);
+    setOffset(0);
+    setSpinning(true);
+    setPhase("spinning");
+  }
+
+  // The reel track only mounts once `phase` becomes "spinning" — trackRef is still null at the
+  // moment spin() runs, so the target offset (and the timer that reveals the winner) has to wait
+  // for this effect, which fires only after the track has actually committed to the DOM.
+  useEffect(() => {
+    if (phase !== "spinning") return;
+    const winner = pendingWinnerRef.current;
+    if (!winner) return;
 
     const containerWidth = trackRef.current?.parentElement?.getBoundingClientRect().width ?? 320;
     const jitter = (Math.random() - 0.5) * (ITEM_WIDTH * 0.6);
     const target = -(TRACK_PAD + WINNING_INDEX * ITEM_STEP + ITEM_WIDTH / 2 - containerWidth / 2) + jitter;
-    setOffset(0);
-    requestAnimationFrame(() => setOffset(target));
-    setSpinning(true);
-    setPhase("spinning");
-
-    setTimeout(() => appoint(winner), SPIN_DURATION * 1000);
-  }
+    const raf = requestAnimationFrame(() => setOffset(target));
+    const timer = setTimeout(() => appoint(winner), SPIN_DURATION * 1000);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   function choose(choice: "a" | "b" | "bribe") {
     if (!mandate || resolving) return;
@@ -201,10 +220,24 @@ export function Ministry() {
       }
     }
 
-    const newPopularity = Math.max(0, Math.min(100, mandate.popularity + popDelta));
+    let newPopularity = Math.max(0, Math.min(100, mandate.popularity + popDelta));
     const newTreasury = mandate.treasury + treasuryDelta;
-    const censured = newPopularity <= 0;
+    let censured = newPopularity <= 0;
     const nextTurn = mandate.turn + 1;
+
+    // A motion de censure is only ever tabled once popularity has already survived the choice
+    // above (a hard zero is a total collapse, no vote needed) — the lower it is, the more likely
+    // it fails.
+    if (!censured && newPopularity <= 30) {
+      const cm = resolveCensureMotion(newPopularity, winBias);
+      outcomeText += `\n\n${cm.narrative}`;
+      if (cm.survived) {
+        newPopularity = Math.max(0, newPopularity - cm.popularityPenalty);
+        censured = newPopularity <= 0;
+      } else {
+        censured = true;
+      }
+    }
 
     setResolving(true);
     setLastOutcome(outcomeText);
@@ -217,7 +250,7 @@ export function Ministry() {
         setLastOutcome(null);
         setResolving(false);
       }
-    }, 2000);
+    }, outcomeText.includes("Motion de censure") ? 3200 : 2000);
   }
 
   function reset() {
@@ -307,7 +340,7 @@ export function Ministry() {
                     <span className="text-2xl">{mandate.ministry.glyph}</span>
                     <div>
                       <p className="text-sm font-semibold text-white">{mandate.ministry.label}</p>
-                      <p className="text-xs text-ice-200/40">Année {mandate.turn + 1}/{MANDATE_LENGTH}</p>
+                      <p className="text-xs text-ice-200/40">Année {mandate.turn + 1}/{MANDATE_LENGTH} · {mandate.startYear + mandate.turn}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -333,7 +366,7 @@ export function Ministry() {
                 <p className="mt-2 text-sm text-ice-200/70">{event.description}</p>
 
                 {lastOutcome !== null ? (
-                  <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
+                  <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
                     {lastOutcome}
                   </motion.div>
                 ) : (
