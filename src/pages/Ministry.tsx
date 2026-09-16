@@ -22,8 +22,15 @@ import {
   drawMandateEvents, type MandateEvent, CATEGORY_LABEL,
   billsForYear, resolveVote, resolveBribeLeak, type Bill, type VoteChoice,
   bribeCost, resolveBribe, resolveChaos, resolveCensureMotion, computeOutcome,
-  drawHappening, shouldTriggerHappening,
+  drawHappening, shouldTriggerHappening, shouldTriggerSurpriseCensure,
+  POLITICAL_BLOCS, START_BLOC_CONFIDENCE, applyBlocConfidence,
+  START_DEBT_GDP, applyVoteDebtImpact, applyEventDebtImpact, creditRatingFor, interestRateFor, type CreditRating,
+  resolvePresidentialBid,
 } from "../lib/ministryEngine";
+
+function average(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
 
 const ITEM_WIDTH = 128;
 const ITEM_GAP = 8;
@@ -34,17 +41,20 @@ const WINNING_INDEX = 50;
 const SPIN_DURATION = 5.5;
 
 type View = "mandat" | "palmares" | "salon";
-type Phase = "idle" | "spinning" | "votes" | "happening" | "event" | "recap";
+type Phase = "idle" | "spinning" | "votes" | "happening" | "event" | "farewell" | "recap";
 
 interface MandateState {
   ministry: MinistryDef;
   turn: number;
   popularity: number;
   treasury: number;
+  debtGdp: number;
+  blocConfidence: Record<string, number>;
   events: MandateEvent[];
   startYear: number;
   bills: Bill[];
   billIndex: number;
+  usedHappeningIds: string[];
 }
 
 interface RoundResult {
@@ -64,6 +74,11 @@ const CATEGORY_TONE: Record<MandateEvent["category"], "danger" | "gold" | "elect
   vote: "success",
   election: "gold",
   happening: "electric",
+};
+
+const RATING_TONE: Record<CreditRating, string> = {
+  AAA: "text-emerald-400", AA: "text-emerald-400", A: "text-ice-200/70", BBB: "text-ice-200/70",
+  BB: "text-red-400", B: "text-red-400",
 };
 
 function ReelTile({ ministry }: { ministry: MinistryDef }) {
@@ -96,6 +111,7 @@ export function Ministry() {
   const [lastOutcome, setLastOutcome] = useState<string | null>(null);
   const [chaosActive, setChaosActive] = useState(false);
   const [happening, setHappening] = useState<MandateEvent | null>(null);
+  const [coinFlipping, setCoinFlipping] = useState(false);
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
   const [result, setResult] = useState<RoundResult | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -143,8 +159,11 @@ export function Ministry() {
     const startYear = new Date().getFullYear();
     setMandate({
       ministry, turn: 0, popularity: START_POPULARITY, treasury: 0,
+      debtGdp: START_DEBT_GDP,
+      blocConfidence: Object.fromEntries(POLITICAL_BLOCS.map((b) => [b.id, START_BLOC_CONFIDENCE])),
       events: drawMandateEvents(startYear), startYear,
       bills: billsForYear(ministry), billIndex: 0,
+      usedHappeningIds: [],
     });
     setPhase("votes");
   }
@@ -206,33 +225,63 @@ export function Ministry() {
     }
 
     const result = resolveVote(bill, vote, winBias);
-    const newPopularity = Math.max(0, Math.min(100, mandate.popularity + result.popularity - extraPenalty));
+    let newPopularity = Math.max(0, Math.min(100, mandate.popularity + result.popularity - extraPenalty));
     const newTreasury = mandate.treasury + result.treasury;
+    const debtUpdate = applyVoteDebtImpact(mandate.debtGdp, bill, result.passed);
+    if (debtUpdate.narrative) extraText += `\n\n${debtUpdate.narrative}`;
+    const newBlocConfidence = applyBlocConfidence(mandate.blocConfidence, bill, vote);
+
+    let censured = newPopularity <= 0;
+    if (!censured && (newPopularity <= 30 || shouldTriggerSurpriseCensure())) {
+      const avgConfidence = average(Object.values(newBlocConfidence));
+      const cm = resolveCensureMotion(newPopularity, winBias, avgConfidence);
+      extraText += `\n\n${cm.narrative}`;
+      if (cm.survived) {
+        newPopularity = Math.max(0, newPopularity - cm.popularityPenalty);
+        censured = newPopularity <= 0;
+      } else {
+        censured = true;
+      }
+    }
 
     setResolving(true);
     setLastOutcome(result.narrative + extraText);
 
     setTimeout(() => {
-      if (newPopularity <= 0) {
+      if (censured) {
         finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, true), true);
         return;
       }
+      const carried = { ...mandate, popularity: newPopularity, treasury: newTreasury, debtGdp: debtUpdate.debtGdp, blocConfidence: newBlocConfidence };
       const nextBillIndex = mandate.billIndex + 1;
       if (nextBillIndex < mandate.bills.length) {
-        setMandate({ ...mandate, billIndex: nextBillIndex, popularity: newPopularity, treasury: newTreasury });
+        let usedHappeningIds = mandate.usedHappeningIds;
+        const triggerHappening = shouldTriggerHappening();
+        if (triggerHappening) {
+          const picked = drawHappening(usedHappeningIds);
+          usedHappeningIds = picked.usedIds;
+          setHappening(picked.event);
+        }
+        setMandate({ ...carried, billIndex: nextBillIndex, usedHappeningIds });
         setLastOutcome(null);
         setResolving(false);
-        if (shouldTriggerHappening()) {
-          setHappening(drawHappening());
-          setPhase("happening");
-        }
+        if (triggerHappening) setPhase("happening");
       } else {
-        setMandate({ ...mandate, popularity: newPopularity, treasury: newTreasury });
+        setMandate(carried);
         setLastOutcome(null);
         setResolving(false);
         setPhase("event");
       }
-    }, 1100);
+    }, extraText.includes("Motion de censure") ? 3200 : 1100);
+  }
+
+  function flipCoin() {
+    if (!mandate || resolving || coinFlipping) return;
+    setCoinFlipping(true);
+    setTimeout(() => {
+      setCoinFlipping(false);
+      voteBill(Math.random() < 0.5 ? "pour" : "contre");
+    }, 1400);
   }
 
   // Same shape as choose() below (two choices, optional chaos, censure check if popularity dips
@@ -259,10 +308,13 @@ export function Ministry() {
 
     let newPopularity = Math.max(0, Math.min(100, mandate.popularity + popDelta));
     const newTreasury = mandate.treasury + treasuryDelta;
+    const debtUpdate = applyEventDebtImpact(mandate.debtGdp, treasuryDelta);
+    if (debtUpdate.narrative) outcomeText += `\n\n${debtUpdate.narrative}`;
     let censured = newPopularity <= 0;
 
     if (!censured && newPopularity <= 30) {
-      const cm = resolveCensureMotion(newPopularity, winBias);
+      const avgConfidence = average(Object.values(mandate.blocConfidence));
+      const cm = resolveCensureMotion(newPopularity, winBias, avgConfidence);
       outcomeText += `\n\n${cm.narrative}`;
       if (cm.survived) {
         newPopularity = Math.max(0, newPopularity - cm.popularityPenalty);
@@ -280,7 +332,7 @@ export function Ministry() {
       if (censured) {
         finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, censured), censured);
       } else {
-        setMandate({ ...mandate, popularity: newPopularity, treasury: newTreasury });
+        setMandate({ ...mandate, popularity: newPopularity, treasury: newTreasury, debtGdp: debtUpdate.debtGdp });
         setLastOutcome(null);
         setResolving(false);
         setPhase("votes");
@@ -325,6 +377,8 @@ export function Ministry() {
 
     let newPopularity = Math.max(0, Math.min(100, mandate.popularity + popDelta));
     const newTreasury = mandate.treasury + treasuryDelta;
+    const debtUpdate = applyEventDebtImpact(mandate.debtGdp, treasuryDelta);
+    if (debtUpdate.narrative) outcomeText += `\n\n${debtUpdate.narrative}`;
     let censured = newPopularity <= 0;
     const nextTurn = mandate.turn + 1;
 
@@ -332,7 +386,8 @@ export function Ministry() {
     // above (a hard zero is a total collapse, no vote needed) — the lower it is, the more likely
     // it fails.
     if (!censured && newPopularity <= 30) {
-      const cm = resolveCensureMotion(newPopularity, winBias);
+      const avgConfidence = average(Object.values(mandate.blocConfidence));
+      const cm = resolveCensureMotion(newPopularity, winBias, avgConfidence);
       outcomeText += `\n\n${cm.narrative}`;
       if (cm.survived) {
         newPopularity = Math.max(0, newPopularity - cm.popularityPenalty);
@@ -346,11 +401,16 @@ export function Ministry() {
     setLastOutcome(outcomeText);
 
     setTimeout(() => {
-      if (censured || nextTurn >= MANDATE_LENGTH) {
-        finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, censured), censured);
+      if (censured) {
+        finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, true), true);
+      } else if (nextTurn >= MANDATE_LENGTH) {
+        setMandate({ ...mandate, turn: nextTurn, popularity: newPopularity, treasury: newTreasury, debtGdp: debtUpdate.debtGdp });
+        setLastOutcome(null);
+        setResolving(false);
+        setPhase("farewell");
       } else {
         setMandate({
-          ...mandate, turn: nextTurn, popularity: newPopularity, treasury: newTreasury,
+          ...mandate, turn: nextTurn, popularity: newPopularity, treasury: newTreasury, debtGdp: debtUpdate.debtGdp,
           bills: billsForYear(mandate.ministry), billIndex: 0,
         });
         setLastOutcome(null);
@@ -358,6 +418,21 @@ export function Ministry() {
         setPhase("votes");
       }
     }, outcomeText.includes("Motion de censure") ? 3200 : 2000);
+  }
+
+  function endMandateQuietly() {
+    if (!mandate) return;
+    finalizeRound(mandate.ministry, mandate.popularity, mandate.treasury, computeOutcome(mandate.ministry, mandate.popularity, mandate.treasury, false), false);
+  }
+
+  function runForPresident() {
+    if (!mandate || resolving) return;
+    const r = resolvePresidentialBid(mandate.popularity, winBias);
+    setResolving(true);
+    setLastOutcome(r.narrative);
+    setTimeout(() => {
+      finalizeRound(mandate.ministry, mandate.popularity, mandate.treasury, { payout: r.payout, label: r.label }, false);
+    }, 2600);
   }
 
   function reset() {
@@ -441,7 +516,7 @@ export function Ministry() {
             </Card>
           )}
 
-          {(phase === "votes" || phase === "happening" || phase === "event") && mandate && (
+          {(phase === "votes" || phase === "happening" || phase === "event" || phase === "farewell") && mandate && (
             <div className="flex flex-col gap-4">
               <Card className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -452,8 +527,8 @@ export function Ministry() {
                       <p className="text-xs text-ice-200/40">Année {mandate.turn + 1}/{MANDATE_LENGTH} · {mandate.startYear + mandate.turn}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="w-36">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="w-32">
                       <p className="mb-1 text-[10px] uppercase tracking-wide text-ice-200/40">Popularité</p>
                       <ProgressBar value={mandate.popularity} max={100} />
                     </div>
@@ -463,7 +538,34 @@ export function Ministry() {
                         {mandate.treasury >= 0 ? "+" : ""}{mandate.treasury}
                       </p>
                     </div>
+                    <div className="text-right">
+                      <p className="text-[10px] uppercase tracking-wide text-ice-200/40">Dette publique</p>
+                      <p className="font-display text-sm font-bold text-white">{mandate.debtGdp.toFixed(0)}% PIB</p>
+                      <p className="text-[10px] text-ice-200/40">
+                        Taux 10 ans {interestRateFor(mandate.debtGdp).toFixed(2)}% ·{" "}
+                        <span className={RATING_TONE[creditRatingFor(mandate.debtGdp)]}>{creditRatingFor(mandate.debtGdp)}</span>
+                      </p>
+                    </div>
                   </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
+                  {POLITICAL_BLOCS.map((b) => {
+                    const v = mandate.blocConfidence[b.id] ?? 50;
+                    return (
+                      <span
+                        key={b.id}
+                        title={b.label}
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                          v >= 60 ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300" :
+                          v <= 35 ? "border-red-400/30 bg-red-500/10 text-red-300" :
+                          "border-white/10 bg-white/5 text-ice-200/60"
+                        )}
+                      >
+                        {b.short} {v}
+                      </span>
+                    );
+                  })}
                 </div>
               </Card>
 
@@ -491,19 +593,31 @@ export function Ministry() {
                     <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
                       {lastOutcome}
                     </motion.div>
+                  ) : coinFlipping ? (
+                    <div className="mt-5 flex flex-col items-center gap-2 py-4">
+                      <motion.span className="text-5xl" animate={{ rotateY: [0, 360, 720, 1080] }} transition={{ duration: 1.4, ease: "easeInOut" }}>
+                        🪙
+                      </motion.span>
+                      <p className="text-xs text-ice-200/50">Pile ou face...</p>
+                    </div>
                   ) : (
-                    <div className="mt-5 flex gap-2">
-                      <Button variant="secondary" onClick={() => voteBill("pour")} disabled={resolving} className="flex-1">
-                        Pour
-                      </Button>
-                      <Button variant="secondary" onClick={() => voteBill("contre")} disabled={resolving} className="flex-1">
-                        Contre
-                      </Button>
-                      {currentBill.bribeOffer && (
-                        <Button variant="gold" onClick={() => voteBill("bribe")} disabled={resolving} className="flex-1">
-                          💰 Accepter
+                    <div className="mt-5 flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <Button variant="secondary" onClick={() => voteBill("pour")} disabled={resolving} className="flex-1">
+                          Pour
                         </Button>
-                      )}
+                        <Button variant="secondary" onClick={() => voteBill("contre")} disabled={resolving} className="flex-1">
+                          Contre
+                        </Button>
+                        {currentBill.bribeOffer && (
+                          <Button variant="gold" onClick={() => voteBill("bribe")} disabled={resolving} className="flex-1">
+                            💰 Accepter
+                          </Button>
+                        )}
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={flipCoin} disabled={resolving} className="w-full text-ice-200/50">
+                        🪙 Trop indécis ? Pile ou face
+                      </Button>
                     </div>
                   )}
                 </Card>
@@ -556,6 +670,31 @@ export function Ministry() {
                       </Button>
                       <Button variant="gold" onClick={() => choose("bribe")} disabled={resolving || credits < bribeCost(mandate.ministry)} className="w-full">
                         💰 Soudoyer — {formatCredits(bribeCost(mandate.ministry))}
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {phase === "farewell" && (
+                <Card className="p-4 text-center sm:p-6" glow>
+                  <span className="text-4xl">🏁</span>
+                  <h2 className="mt-3 font-display text-lg font-bold text-white">Fin de Mandat</h2>
+                  <p className="mt-2 text-sm text-ice-200/70">
+                    Tes {MANDATE_LENGTH} années au ministère touchent à leur fin. Tu peux repartir en paix, ou tenter le grand saut.
+                  </p>
+
+                  {lastOutcome !== null ? (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-left text-sm text-ice-200/80">
+                      {lastOutcome}
+                    </motion.div>
+                  ) : (
+                    <div className="mx-auto mt-5 flex max-w-sm flex-col gap-2">
+                      <Button variant="secondary" onClick={endMandateQuietly} disabled={resolving} className="w-full">
+                        Terminer sagement ton mandat
+                      </Button>
+                      <Button variant="gold" onClick={runForPresident} disabled={resolving} className="w-full">
+                        🎤 Démissionner et te présenter à la Présidentielle
                       </Button>
                     </div>
                   )}

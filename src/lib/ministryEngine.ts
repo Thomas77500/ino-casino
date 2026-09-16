@@ -419,6 +419,103 @@ export function billsForYear(ministry: Ministry): Bill[] {
 }
 
 // ============================================================================
+// Blocs politiques — confiance de chaque groupe de l'Assemblée (0-100, départ à 50), pure couleur
+// idéologique sur un seul axe fiscal. Chaque vote déplace la confiance de tous les blocs à la fois,
+// et la confiance moyenne pèse ensuite dans les chances de survie d'une motion de censure.
+// ============================================================================
+
+export interface PoliticalBloc {
+  id: string;
+  label: string;
+  short: string;
+  fiscalLean: number; // -1 (toujours pour la baisse d'impôts) à +1 (toujours pour la hausse) — pure fiction
+}
+
+export const POLITICAL_BLOCS: PoliticalBloc[] = [
+  { id: "lfi", label: "La France Insoumise", short: "LFI", fiscalLean: 1 },
+  { id: "ps", label: "Parti Socialiste", short: "PS", fiscalLean: 0.6 },
+  { id: "eelv", label: "Écologistes", short: "EELV", fiscalLean: 0.4 },
+  { id: "renaissance", label: "Renaissance", short: "RE", fiscalLean: -0.2 },
+  { id: "lr", label: "Les Républicains", short: "LR", fiscalLean: -0.8 },
+  { id: "rn", label: "Rassemblement National", short: "RN", fiscalLean: -0.6 },
+];
+
+export const START_BLOC_CONFIDENCE = 50;
+
+export function applyBlocConfidence(confidence: Record<string, number>, bill: Bill, vote: VoteChoice): Record<string, number> {
+  const next = { ...confidence };
+  const directionSign = bill.direction === "hausse" ? 1 : -1;
+  const voteSign = vote === "pour" ? 1 : -1;
+  for (const bloc of POLITICAL_BLOCS) {
+    const delta = Math.round(bloc.fiscalLean * directionSign * voteSign * randInt(1, 4));
+    next[bloc.id] = Math.max(0, Math.min(100, (next[bloc.id] ?? START_BLOC_CONFIDENCE) + delta));
+  }
+  return next;
+}
+
+// ============================================================================
+// Dette publique — pilotée par deux sources : les votes eux-mêmes (via le Md€ déjà affiché sur
+// chaque texte de loi) et les grands événements/happenings (via leur delta de trésorerie abstrait).
+// Franchir un seuil déclenche une note d'agence, dégradation ou reclassement.
+// ============================================================================
+
+export const GDP_MD_EUR = 2800; // PIB fictif en Md€ — sert uniquement à convertir un montant de loi en points de dette
+export const START_DEBT_GDP = 112;
+
+export type CreditRating = "AAA" | "AA" | "A" | "BBB" | "BB" | "B";
+const RATING_ORDER: CreditRating[] = ["AAA", "AA", "A", "BBB", "BB", "B"];
+
+export function creditRatingFor(debtGdp: number): CreditRating {
+  if (debtGdp < 75) return "AAA";
+  if (debtGdp < 95) return "AA";
+  if (debtGdp < 115) return "A";
+  if (debtGdp < 140) return "BBB";
+  if (debtGdp < 165) return "BB";
+  return "B";
+}
+
+export function interestRateFor(debtGdp: number): number {
+  return Math.round((1.2 + debtGdp * 0.028) * 100) / 100;
+}
+
+const RATING_AGENCIES = ["Standard & Poor's", "Moody's", "Fitch"];
+
+export interface DebtImpact {
+  debtGdp: number;
+  narrative: string | null;
+}
+
+function finalizeDebtImpact(prevRating: CreditRating, nextDebt: number): DebtImpact {
+  const nextRating = creditRatingFor(nextDebt);
+  if (nextRating === prevRating) return { debtGdp: nextDebt, narrative: null };
+  const agency = pick(RATING_AGENCIES);
+  const downgrade = RATING_ORDER.indexOf(nextRating) > RATING_ORDER.indexOf(prevRating);
+  const narrative = downgrade
+    ? `📉 ${agency} dégrade la note de la France de ${prevRating} à ${nextRating}. Les taux d'emprunt s'envolent.`
+    : `📈 ${agency} relève la note de la France de ${prevRating} à ${nextRating}. Bercy respire un peu.`;
+  return { debtGdp: nextDebt, narrative };
+}
+
+// ponytail: linear drift (0.05/vote) + bill amount converted to points of GDP — tune BASE_DRIFT or
+// the /100 conversion if the dette feels too twitchy or too flat over a 5-year mandate.
+const VOTE_DEBT_BASE_DRIFT = 0.05;
+
+export function applyVoteDebtImpact(debtGdp: number, bill: Bill, passed: boolean): DebtImpact {
+  const prevRating = creditRatingFor(debtGdp);
+  const billEffect = passed ? (bill.direction === "hausse" ? -bill.amountMdEur : bill.amountMdEur) / (GDP_MD_EUR / 100) : 0;
+  const nextDebt = Math.max(40, Math.min(220, debtGdp + VOTE_DEBT_BASE_DRIFT + billEffect));
+  return finalizeDebtImpact(prevRating, nextDebt);
+}
+
+const EVENT_DEBT_IMPACT_FACTOR = 0.08;
+
+export function applyEventDebtImpact(debtGdp: number, treasuryDelta: number): DebtImpact {
+  const prevRating = creditRatingFor(debtGdp);
+  const nextDebt = Math.max(40, Math.min(220, debtGdp - treasuryDelta * EVENT_DEBT_IMPACT_FACTOR));
+  return finalizeDebtImpact(prevRating, nextDebt);
+}
+
+// ============================================================================
 // Happenings — soirées, pots et réceptions qui surgissent entre deux votes pour aérer la session
 // législative. Même forme qu'un MandateEvent (deux choix, parfois un `chaos` résolu par
 // resolveChaos()), tirés d'un pool séparé et déclenchés au hasard pendant la phase de votes.
@@ -489,16 +586,156 @@ export const HAPPENING_POOL: MandateEvent[] = [
       { label: "Passer en coup de vent", outcome: "Poli, mais un peu froid comme image.", popularity: 1, treasury: 0 },
     ],
   },
+  {
+    id: "happening-collecte-fonds", category: "happening", title: "Soirée de Levée de Fonds",
+    description: "Un dîner de gala pour une cause noble tourne vite en compétition de champagne entre donateurs.",
+    choices: [
+      { label: "Rester concentré sur la cause", outcome: "La collecte est un franc succès, salué par la presse.", popularity: 7, treasury: 4 },
+      { label: "Profiter un peu trop de l'open bar", outcome: "Ambiance fantastique, un donateur se plaint le lendemain.", popularity: -3, treasury: 2 },
+    ],
+  },
+  {
+    id: "happening-mariage-collegue", category: "happening", title: "Le Mariage d'un Collègue Ministre",
+    description: "Un collègue du gouvernement se marie. La réception dure jusqu'au bout de la nuit.",
+    choices: [
+      { label: "Faire un discours et repartir sobre", outcome: "Discours remarqué, image impeccable.", popularity: 5, treasury: 0 },
+      { label: "Danser jusqu'à l'aube avec tout le gouvernement", outcome: "Souvenir mémorable, une vidéo un peu gênante circule.", popularity: -4, treasury: 0 },
+    ],
+  },
+  {
+    id: "happening-club-prive", category: "happening", title: "Le Carton d'un Club Privé",
+    description: "Un carton VIP pour un club très fermé de la capitale atterrit sur ton bureau, offert par un \"ami\".",
+    choices: [
+      { label: "Refuser, ça la fout mal", outcome: "Prudent, aucune trace, aucune histoire.", popularity: 2, treasury: 0 },
+      { label: "Y faire un tour", outcome: "", popularity: 0, treasury: 0, chaos: true },
+    ],
+  },
+  {
+    id: "happening-festival-ete", category: "happening", title: "Backstage VIP au Festival d'Été",
+    description: "Un grand festival de musique t'invite en loge VIP pour \"parler jeunesse et culture\".",
+    choices: [
+      { label: "Faire un tour rapide et repartir", outcome: "Bonne image, sans excès.", popularity: 4, treasury: 0 },
+      { label: "Rester tout le concert, au premier rang", outcome: "Photos sympas partagées en masse, tu passes pour quelqu'un de cool.", popularity: 8, treasury: -1 },
+    ],
+  },
+  {
+    id: "happening-vernissage", category: "happening", title: "Vernissage Mondain",
+    description: "Le vernissage d'une exposition d'art contemporain attire tout le gratin parisien, petits fours et champagne à volonté.",
+    choices: [
+      { label: "Discuter sérieusement avec les artistes", outcome: "Une belle image de mécène éclairé.", popularity: 5, treasury: 0 },
+      { label: "Se concentrer sur le buffet", outcome: "Personne ne t'en veut vraiment, moment détente.", popularity: 1, treasury: 0 },
+    ],
+  },
+  {
+    id: "happening-apres-match", category: "happening", title: "Tribune VIP en Finale",
+    description: "Une place en tribune officielle pour une grande finale sportive, avec loge et éventuel but de la victoire.",
+    choices: [
+      { label: "Célébrer sobrement avec les officiels", outcome: "Image correcte, sans plus.", popularity: 2, treasury: 0 },
+      { label: "Exulter comme un supporter lambda", outcome: "Moment de communion nationale, ça marche à fond.", popularity: 11, treasury: 0 },
+    ],
+  },
+  {
+    id: "happening-yacht", category: "happening", title: "Le Yacht d'un Ami Industriel",
+    description: "Un industriel influent t'invite pour \"discuter tranquillement\" sur son yacht amarré au large.",
+    choices: [
+      { label: "Décliner poliment l'invitation", outcome: "Aucune photo compromettante, tu dors tranquille.", popularity: 3, treasury: 0 },
+      { label: "Accepter, juste pour l'apéro", outcome: "Des photos du yacht fuitent, ça sent le conflit d'intérêt.", popularity: -9, treasury: 6 },
+    ],
+  },
+  {
+    id: "happening-soiree-etudiants", category: "happening", title: "Descente Surprise en Soirée Étudiante",
+    description: "Une tournée de terrain t'amène par hasard au beau milieu d'une soirée étudiante bien arrosée.",
+    choices: [
+      { label: "Saluer poliment et repartir", outcome: "Un peu rigide, mais rien de grave.", popularity: 0, treasury: 0 },
+      { label: "Rester trinquer avec les étudiants", outcome: "", popularity: 0, treasury: 0, chaos: true },
+    ],
+  },
+  {
+    id: "happening-diner-etat", category: "happening", title: "Dîner d'État",
+    description: "Un dîner d'État protocolaire s'étire en une longue soirée de toasts et de discours interminables.",
+    choices: [
+      { label: "Tenir le protocole jusqu'au bout", outcome: "Impeccable sur la forme, apprécié en coulisses.", popularity: 4, treasury: 0 },
+      { label: "S'éclipser discrètement avant le dessert", outcome: "Ça se remarque, un peu impoli.", popularity: -3, treasury: 0 },
+    ],
+  },
+  {
+    id: "happening-after-conseil", category: "happening", title: "L'After du Conseil des Ministres",
+    description: "Après un Conseil des ministres particulièrement tendu, le Premier ministre sort le champagne \"pour décompresser\".",
+    choices: [
+      { label: "Prendre juste une coupe et rentrer", outcome: "Convivial, sans excès.", popularity: 2, treasury: 0 },
+      { label: "Rester décompresser à fond avec l'équipe", outcome: "", popularity: 0, treasury: 0, chaos: true },
+    ],
+  },
+  {
+    id: "happening-remise-prix", category: "happening", title: "Remise de Prix Culturel",
+    description: "Tu dois remettre un prix lors d'une cérémonie people, retransmise en direct.",
+    choices: [
+      { label: "Lire le discours officiel, sobrement", outcome: "Correct, sans éclat particulier.", popularity: 1, treasury: 0 },
+      { label: "Improviser une blague sur scène", outcome: "Le public adore, le clip devient viral.", popularity: 9, treasury: 0 },
+    ],
+  },
+  {
+    id: "happening-boum-collaborateurs", category: "happening", title: "La Boum du Cabinet",
+    description: "Tes collaborateurs organisent une petite fête surprise au ministère un vendredi soir.",
+    choices: [
+      { label: "Passer dire bonjour cinq minutes", outcome: "Sympathique, l'équipe est ravie.", popularity: 3, treasury: 0 },
+      { label: "Rester jusqu'au bout avec toute l'équipe", outcome: "Ambiance excellente, esprit d'équipe renforcé.", popularity: 6, treasury: -1 },
+    ],
+  },
+  {
+    id: "happening-croisiere", category: "happening", title: "Croisière Officielle sur la Seine",
+    description: "Une réception sur un bateau-mouche pour des \"partenaires stratégiques\" tourne à la fête flottante.",
+    choices: [
+      { label: "Garder un œil sur le protocole", outcome: "Soirée maîtrisée, aucune fausse note.", popularity: 3, treasury: 0 },
+      { label: "Se laisser porter par le courant, et la soirée", outcome: "", popularity: 0, treasury: 0, chaos: true },
+    ],
+  },
+  {
+    id: "happening-apero-syndicats", category: "happening", title: "Apéro de Réconciliation avec les Syndicats",
+    description: "Après des mois de tensions, les syndicats proposent un apéro \"pour repartir sur de bonnes bases\".",
+    choices: [
+      { label: "Trinquer et vraiment écouter leurs demandes", outcome: "Le dialogue social s'apaise nettement.", popularity: 8, treasury: -3 },
+      { label: "Faire acte de présence, sans plus", outcome: "Le geste est vu comme un peu cosmétique.", popularity: 1, treasury: 0 },
+    ],
+  },
+  {
+    id: "happening-anniversaire-parti", category: "happening", title: "Anniversaire du Parti",
+    description: "Le parti organise sa grande soirée annuelle. Tous les cadres sont attendus, et l'ambiance monte vite.",
+    choices: [
+      { label: "Faire un discours mobilisateur et filer", outcome: "Bonne image de leader, sans dérapage.", popularity: 5, treasury: 0 },
+      { label: "Fêter ça comme il se doit, jusqu'au bout", outcome: "Super soirée entre camarades, quelques images circulent en interne.", popularity: -1, treasury: 0 },
+    ],
+  },
+  {
+    id: "happening-diner-diplomatique", category: "happening", title: "Dîner Diplomatique Interminable",
+    description: "Un dîner avec une délégation étrangère s'éternise en une succession de toasts et de plats bien arrosés.",
+    choices: [
+      { label: "Lever le pied sur l'alcool, diplomatie oblige", outcome: "Négociations sérieuses, bon accueil des deux côtés.", popularity: 4, treasury: 2 },
+      { label: "Suivre le rythme de la délégation", outcome: "", popularity: 0, treasury: 0, chaos: true },
+    ],
+  },
 ];
 
-export function drawHappening(): MandateEvent {
-  return pick(HAPPENING_POOL);
+// Never repeats a happening until the whole pool has been seen once — with ~24 entries and only a
+// handful drawn per mandate, plain uniform pick() felt like it kept landing on the same few.
+export function drawHappening(usedIds: string[] = []): { event: MandateEvent; usedIds: string[] } {
+  const available = HAPPENING_POOL.filter((h) => !usedIds.includes(h.id));
+  const pool = available.length > 0 ? available : HAPPENING_POOL;
+  const event = pick(pool);
+  const nextUsed = available.length > 0 ? [...usedIds, event.id] : [event.id];
+  return { event, usedIds: nextUsed };
 }
 
 // ~28% chance after resolving a vote (never after the last one, which hands off to the grand
 // yearly event) — punctuates the 15-20 votes of a session with a handful of parties/dérives.
 export function shouldTriggerHappening(): boolean {
   return chance(0.28);
+}
+
+// ~5% chance per vote that the opposition tables a snap motion regardless of popularity — pure
+// unpredictable drama, independent of the popularity<=30 threshold check next to every event choice.
+export function shouldTriggerSurpriseCensure(): boolean {
+  return chance(0.05);
 }
 
 export interface VoteResult {
@@ -536,8 +773,8 @@ export interface BribeLeakResult {
 }
 
 export function resolveBribeLeak(bias = 1): BribeLeakResult {
-  const leaked = !biasedChance(0.82, bias);
-  return { leaked, popularityPenalty: leaked ? randInt(10, 20) : 0 };
+  const leaked = !biasedChance(0.8, bias);
+  return { leaked, popularityPenalty: leaked ? randInt(18, 32) : 0 };
 }
 
 // ============================================================================
@@ -546,7 +783,7 @@ export function resolveBribeLeak(bias = 1): BribeLeakResult {
 // ============================================================================
 
 export function bribeCost(ministry: Ministry): number {
-  return Math.round(ENTRY_COST * 0.4 * Math.max(1, TIER_MULTIPLIER[ministry.tier]));
+  return Math.round(ENTRY_COST * 1.5 * Math.max(1, TIER_MULTIPLIER[ministry.tier]));
 }
 
 const BRIBE_SUCCESS_LINES = [
@@ -568,11 +805,11 @@ export interface BribeResult {
 }
 
 export function resolveBribe(bias = 1): BribeResult {
-  const success = biasedChance(0.65, bias);
+  const success = biasedChance(0.6, bias);
   if (success) {
-    return { success: true, popularity: randInt(12, 22), treasury: randInt(5, 15), outcome: pick(BRIBE_SUCCESS_LINES) };
+    return { success: true, popularity: randInt(18, 30), treasury: randInt(20, 45), outcome: pick(BRIBE_SUCCESS_LINES) };
   }
-  return { success: false, popularity: -randInt(18, 30), treasury: -randInt(10, 25), outcome: pick(BRIBE_FAIL_LINES) };
+  return { success: false, popularity: -randInt(28, 42), treasury: -randInt(25, 45), outcome: pick(BRIBE_FAIL_LINES) };
 }
 
 // ============================================================================
@@ -617,8 +854,11 @@ export interface CensureResult {
   popularityPenalty: number;
 }
 
-export function resolveCensureMotion(popularity: number, bias = 1): CensureResult {
-  const surviveChance = 0.3 + (Math.max(0, Math.min(100, popularity)) / 100) * 0.6;
+// avgBlocConfidence, when known, blends into the survival odds alongside raw popularity — a
+// government can be personally popular but still fall if every bloc in the Assembly distrusts it.
+export function resolveCensureMotion(popularity: number, bias = 1, avgBlocConfidence?: number): CensureResult {
+  const basis = avgBlocConfidence !== undefined ? popularity * 0.6 + avgBlocConfidence * 0.4 : popularity;
+  const surviveChance = 0.3 + (Math.max(0, Math.min(100, basis)) / 100) * 0.6;
   const survived = biasedChance(surviveChance, bias);
   const votesForCensure = survived ? randInt(220, 288) : randInt(289, 344);
   const narrative = survived
@@ -653,4 +893,34 @@ export function computeOutcome(ministry: Ministry, popularity: number, treasury:
     popularity >= 40 ? "Mandat honorable" :
     "Mandat chahuté, mais tenu jusqu'au bout";
   return { payout, label };
+}
+
+// ============================================================================
+// Démission pour se présenter à la Présidentielle — offerte uniquement à la toute fin d'un mandat
+// mené jusqu'au bout (pas de motion de censure). Pari à haut risque : le gain dépasse largement
+// Matignon en cas de victoire, la défaite paie moins bien qu'un mandat sagement terminé.
+// ============================================================================
+
+const PRESIDENT_WIN_MULTIPLIER = 12;
+const PRESIDENT_LOSE_MULTIPLIER = 0.5;
+
+export interface PresidentialBidResult {
+  won: boolean;
+  payout: number;
+  label: string;
+  narrative: string;
+}
+
+export function resolvePresidentialBid(popularity: number, bias = 1): PresidentialBidResult {
+  const winChance = 0.15 + (Math.max(0, Math.min(100, popularity)) / 100) * 0.5;
+  const won = biasedChance(winChance, bias);
+  const payout = Math.round(ENTRY_COST * (won ? PRESIDENT_WIN_MULTIPLIER : PRESIDENT_LOSE_MULTIPLIER) * (0.8 + Math.random() * 0.5));
+  return {
+    won,
+    payout,
+    label: won ? "Élu(e) Président(e) de la République !" : "Défaite à la Présidentielle",
+    narrative: won
+      ? "Le pays a tranché : c'est toi le nouveau ou la nouvelle Président(e) de la République. Le perchoir t'attend."
+      : "Le premier tour t'élimine sans appel. Retour à la vie civile, la tête haute.",
+  };
 }
