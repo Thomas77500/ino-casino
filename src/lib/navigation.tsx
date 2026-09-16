@@ -24,6 +24,8 @@ import {
   IconMinistry,
   IconFootball,
   IconWasher,
+  IconMask,
+  IconDice,
 } from "../components/icons";
 
 export type AppTab =
@@ -44,6 +46,8 @@ export type AppTab =
   | "ministry"
   | "club"
   | "laundering"
+  | "blackmarket"
+  | "darktable"
   | "bonus"
   | "rewards"
   | "leaderboard"
@@ -71,6 +75,8 @@ export const GAMES: { id: AppTab; label: string; icon: ComponentType<SVGProps<SV
   { id: "bourse", label: "Bourse", icon: IconTrendUp, blurb: "Mise à la hausse ou à la baisse — débloqué à 100M de gains cumulés.", tag: "Secret" },
   { id: "ministry", label: "Ministère", icon: IconMinistry, blurb: "Roulette de nomination puis mandat de 5 ans — débloqué à 25M de gains cumulés.", tag: "Secret" },
   { id: "club", label: "Président de Club", icon: IconFootball, blurb: "Roulette de reprise puis présidence de 5 saisons — débloqué à 35M de gains cumulés.", tag: "Secret" },
+  { id: "blackmarket", label: "Marché Noir", icon: IconMask, blurb: "Boutique, collection et échanges entre joueurs — débloqué à 15M de gains cumulés.", tag: "Secret" },
+  { id: "darktable", label: "Table Clandestine", icon: IconDice, blurb: "Une table partagée par tous les joueurs en temps réel — extrais avant le crash.", tag: "Nouveau" },
 ];
 
 export const TABS: { id: AppTab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; adminOnly?: boolean }[] = [
@@ -104,4 +110,6 @@ export const GATED_GAME_IDS: Partial<Record<AppTab, string>> = {
   ministry: "ministry",
   club: "club",
   laundering: "laundering",
+  blackmarket: "blackmarket",
+  darktable: "darktable",
 };

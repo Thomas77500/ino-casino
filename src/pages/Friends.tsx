@@ -4,6 +4,8 @@ import { usePresenceStore } from "../store/presenceStore";
 import { useToastStore } from "../store/toastStore";
 import { useGiftsStore } from "../store/giftsStore";
 import { useCasinoStore } from "../store/casinoStore";
+import { useAuthStore } from "../store/authStore";
+import { useDebtsStore } from "../store/debtsStore";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
@@ -17,6 +19,10 @@ export function Friends() {
   const push = useToastStore((s) => s.push);
   const sendGift = useGiftsStore((s) => s.sendGift);
   const credits = useCasinoStore((s) => s.credits);
+  const account = useAuthStore((s) => s.account);
+  const debts = useDebtsStore((s) => s.debts);
+  const fetchDebts = useDebtsStore((s) => s.fetchAll);
+  const settleDebt = useDebtsStore((s) => s.settle);
   const [search, setSearch] = useState("");
   const [sending, setSending] = useState(false);
   const [giftTargetId, setGiftTargetId] = useState<string | null>(null);
@@ -39,8 +45,11 @@ export function Friends() {
 
   useEffect(() => {
     fetchAll();
+    if (account) fetchDebts(account.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [account?.id]);
+
+  const openDebts = debts.filter((d) => !d.settled);
 
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -73,6 +82,24 @@ export function Friends() {
           <Button type="submit" disabled={sending || !search.trim()}>Ajouter</Button>
         </form>
       </Card>
+
+      {openDebts.length > 0 && (
+        <Card className="mt-6 p-6">
+          <h2 className="mb-4 font-display text-lg font-semibold text-white">Ardoises (Table Clandestine)</h2>
+          <ul className="flex flex-col gap-2">
+            {openDebts.map((d) => (
+              <li key={d.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm">
+                {d.lenderId === account?.id ? (
+                  <span className="text-ice-200/70"><span className="font-medium text-white">{d.borrowerUsername}</span> te doit {formatCredits(d.amount)}</span>
+                ) : (
+                  <span className="text-ice-200/70">Tu dois {formatCredits(d.amount)} à <span className="font-medium text-white">{d.lenderUsername}</span></span>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => settleDebt(d.id)}>Marquer réglée</Button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {incoming.length > 0 && (
         <Card className="mt-6 p-6">

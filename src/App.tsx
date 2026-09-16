@@ -43,6 +43,8 @@ const Pmu = lazy(() => import("./pages/Pmu").then((m) => ({ default: m.Pmu })));
 const Ministry = lazy(() => import("./pages/Ministry").then((m) => ({ default: m.Ministry })));
 const Club = lazy(() => import("./pages/Club").then((m) => ({ default: m.Club })));
 const Laundering = lazy(() => import("./pages/Laundering").then((m) => ({ default: m.Laundering })));
+const Blackmarket = lazy(() => import("./pages/Blackmarket").then((m) => ({ default: m.Blackmarket })));
+const Darktable = lazy(() => import("./pages/Darktable").then((m) => ({ default: m.Darktable })));
 const Bonus = lazy(() => import("./pages/Bonus").then((m) => ({ default: m.Bonus })));
 const Rewards = lazy(() => import("./pages/Rewards").then((m) => ({ default: m.Rewards })));
 const Leaderboard = lazy(() => import("./pages/Leaderboard").then((m) => ({ default: m.Leaderboard })));
@@ -70,6 +72,8 @@ const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = 
   ministry: () => <Ministry />,
   club: () => <Club />,
   laundering: () => <Laundering />,
+  blackmarket: () => <Blackmarket />,
+  darktable: () => <Darktable />,
   bonus: () => <Bonus />,
   rewards: () => <Rewards />,
   leaderboard: () => <Leaderboard />,

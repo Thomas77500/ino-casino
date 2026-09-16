@@ -24,6 +24,8 @@ export const GAME_LABELS: Record<string, string> = {
   ministry: "Ministère",
   club: "Président de Club",
   laundering: "Blanchiment",
+  blackmarket: "Marché Noir",
+  darktable: "Table Clandestine",
 };
 
 interface GameStatusState {
