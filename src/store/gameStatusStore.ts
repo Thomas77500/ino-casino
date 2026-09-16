@@ -29,6 +29,8 @@ export const GAME_LABELS: Record<string, string> = {
   sect: "Gourou",
   startup: "Licorne Frauduleuse",
   bookmaker: "Bookmaker Clandestin",
+  mafia: "Parrain de Quartier",
+  area51: "Zone 51 Clandestine",
 };
 
 interface GameStatusState {

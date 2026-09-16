@@ -29,6 +29,8 @@ import {
   IconCultEye,
   IconUnicorn,
   IconTicketOdds,
+  IconFedora,
+  IconUfo,
 } from "../components/icons";
 
 export type AppTab =
@@ -54,6 +56,8 @@ export type AppTab =
   | "sect"
   | "startup"
   | "bookmaker"
+  | "mafia"
+  | "area51"
   | "bonus"
   | "rewards"
   | "leaderboard"
@@ -86,6 +90,8 @@ export const GAMES: { id: AppTab; label: string; icon: ComponentType<SVGProps<SV
   { id: "sect", label: "Gourou", icon: IconCultEye, blurb: "Roulette de fondation puis 5 saisons de recrutement — débloqué à 45M de gains cumulés.", tag: "Secret" },
   { id: "startup", label: "Licorne Frauduleuse", icon: IconUnicorn, blurb: "Lève des tours de table, pivote, gonfle la hype — débloqué à 40M de gains cumulés.", tag: "Secret" },
   { id: "bookmaker", label: "Bookmaker Clandestin", icon: IconTicketOdds, blurb: "Fixe les cotes, encaisse les mises, gère les mauvais payeurs.", tag: "Nouveau" },
+  { id: "mafia", label: "Parrain de Quartier", icon: IconFedora, blurb: "Roulette de territoire puis 5 saisons de règne — débloqué à 55M de gains cumulés.", tag: "Secret" },
+  { id: "area51", label: "Zone 51 Clandestine", icon: IconUfo, blurb: "Roulette de programme puis 5 années de confinement — débloqué à 60M de gains cumulés.", tag: "Secret" },
 ];
 
 export const TABS: { id: AppTab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>>; adminOnly?: boolean }[] = [
@@ -124,4 +130,6 @@ export const GATED_GAME_IDS: Partial<Record<AppTab, string>> = {
   sect: "sect",
   startup: "startup",
   bookmaker: "bookmaker",
+  mafia: "mafia",
+  area51: "area51",
 };

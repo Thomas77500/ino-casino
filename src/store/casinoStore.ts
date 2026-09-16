@@ -12,7 +12,7 @@ import { supabase } from "../lib/supabase";
 
 export interface HistoryEntry {
   id: string;
-  game: "Slots" | "Blackjack" | "Roulette" | "ChickenRoad" | "Plinko" | "Crash" | "ScratchCards" | "Bourse" | "Braquage" | "Boosters" | "Bonus" | "Cases" | "Pmu" | "Ministry" | "Club" | "Laundering" | "Darktable" | "Sect" | "Startup" | "Bookmaker";
+  game: "Slots" | "Blackjack" | "Roulette" | "ChickenRoad" | "Plinko" | "Crash" | "ScratchCards" | "Bourse" | "Braquage" | "Boosters" | "Bonus" | "Cases" | "Pmu" | "Ministry" | "Club" | "Laundering" | "Darktable" | "Sect" | "Startup" | "Bookmaker" | "Mafia" | "Area51";
   label: string;
   bet: number;
   payout: number;

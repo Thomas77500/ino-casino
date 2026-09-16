@@ -122,3 +122,9 @@ export const IconUnicorn = (p: SVGProps<SVGSVGElement>) => (
 export const IconTicketOdds = (p: SVGProps<SVGSVGElement>) => (
   <svg viewBox="0 0 24 24" {...base} {...p}><path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.5a1.7 1.7 0 0 0 0 3V14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.5a1.7 1.7 0 0 0 0-3Z" /><path d="M9 6v10" strokeDasharray="1.8 1.8" /></svg>
 );
+export const IconFedora = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><ellipse cx="12" cy="15.5" rx="9" ry="2.2" /><path d="M6.5 15C6.5 10.5 8.5 6.5 12 6.5s5.5 4 5.5 8.5" /><path d="M8.5 6.7c0-1.5 1.5-2.7 3.5-2.7s3.5 1.2 3.5 2.7" /></svg>
+);
+export const IconUfo = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" {...base} {...p}><ellipse cx="12" cy="11" rx="10" ry="3.2" /><path d="M8 11c0-2.8 1.8-5 4-5s4 2.2 4 5" /><path d="M4.5 12.5 3 17M19.5 12.5 21 17M9 12.8v3M15 12.8v3" /></svg>
+);

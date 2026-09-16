@@ -48,6 +48,8 @@ const Darktable = lazy(() => import("./pages/Darktable").then((m) => ({ default:
 const Sect = lazy(() => import("./pages/Sect").then((m) => ({ default: m.Sect })));
 const Startup = lazy(() => import("./pages/Startup").then((m) => ({ default: m.Startup })));
 const Bookmaker = lazy(() => import("./pages/Bookmaker").then((m) => ({ default: m.Bookmaker })));
+const Mafia = lazy(() => import("./pages/Mafia").then((m) => ({ default: m.Mafia })));
+const Area51 = lazy(() => import("./pages/Area51").then((m) => ({ default: m.Area51 })));
 const Bonus = lazy(() => import("./pages/Bonus").then((m) => ({ default: m.Bonus })));
 const Rewards = lazy(() => import("./pages/Rewards").then((m) => ({ default: m.Rewards })));
 const Leaderboard = lazy(() => import("./pages/Leaderboard").then((m) => ({ default: m.Leaderboard })));
@@ -80,6 +82,8 @@ const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = 
   sect: () => <Sect />,
   startup: () => <Startup />,
   bookmaker: () => <Bookmaker />,
+  mafia: () => <Mafia />,
+  area51: () => <Area51 />,
   bonus: () => <Bonus />,
   rewards: () => <Rewards />,
   leaderboard: () => <Leaderboard />,
