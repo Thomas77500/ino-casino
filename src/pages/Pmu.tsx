@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { HorseRace, LotteryMachine, RACE_MS, drawDurationMs } from "../components/games/PmuDraws";
 import { useCasinoStore } from "../store/casinoStore";
 import { useToastStore } from "../store/toastStore";
 import { useGameStatusStore } from "../store/gameStatusStore";
@@ -186,8 +186,8 @@ function Chevaux({ drunkenness, onCelebrate }: { drunkenness: number; onCelebrat
   const [bet, setBet] = useState(Math.min(50, maxBet));
   const [racing, setRacing] = useState(false);
   const [winner, setWinner] = useState<Horse | null>(null);
-  const [positions, setPositions] = useState<Record<string, number>>({});
   const [raceKey, setRaceKey] = useState(0);
+  const [pending, setPending] = useState<{ horse: Horse; pick: Horse; bet: number } | null>(null);
 
   function race() {
     if (!selected || racing || credits < bet) return;
@@ -195,46 +195,21 @@ function Chevaux({ drunkenness, onCelebrate }: { drunkenness: number; onCelebrat
     setWinner(null);
     setRacing(true);
 
-    const theWinner = raceWinner(winBias);
-    const finalPositions: Record<string, number> = {};
-    HORSES.forEach((h) => {
-      finalPositions[h.id] = h.id === theWinner.id ? 92 : 55 + Math.random() * 30;
-    });
-    // Bump the key first so the horses remount fresh at the starting gate instead of animating
-    // backwards from wherever the last race left them off.
+    const p = { horse: raceWinner(winBias), pick: selected, bet };
+    setPending(p);
     setRaceKey((k) => k + 1);
-    setPositions({});
-    requestAnimationFrame(() => setPositions(finalPositions));
-
+    // settled by timer, not by the animation, so leaving the tab mid-race still pays out
     setTimeout(() => {
       setRacing(false);
-      setWinner(theWinner);
-      const won = theWinner.id === selected.id;
-      const payout = won ? Math.round(bet * theWinner.odds) : 0;
-      resolve(`Chevaux — ${selected.name}`, bet, payout, onCelebrate);
-    }, 2600);
+      setWinner(p.horse);
+      const payout = p.horse.id === p.pick.id ? Math.round(p.bet * p.horse.odds) : 0;
+      resolve(`Chevaux — ${p.pick.name}`, p.bet, payout, onCelebrate);
+    }, RACE_MS + 100);
   }
 
   return (
     <Card className="p-4 sm:p-6" glow>
-      <div className="relative mb-6 overflow-hidden rounded-2xl border border-white/10 bg-ink-950/60 p-4">
-        <div className="pointer-events-none absolute inset-y-0 right-6 w-0.5 bg-gold-400" />
-        <div className="flex flex-col gap-3">
-          {HORSES.map((h) => (
-            <div key={h.id} className="relative h-8">
-              <motion.span
-                key={raceKey}
-                className="absolute text-2xl"
-                initial={{ left: "0%" }}
-                animate={{ left: `${positions[h.id] ?? 0}%` }}
-                transition={{ duration: 2.4, ease: "easeOut" }}
-              >
-                {h.glyph}
-              </motion.span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <HorseRace horses={HORSES} winnerId={pending?.horse.id ?? null} raceKey={raceKey} pickedId={selected?.id ?? null} />
 
       {winner && !racing && (
         <div className="mb-4 rounded-xl border border-gold-400/40 bg-gold-500/10 p-3 text-center">
@@ -278,6 +253,8 @@ function Loto({ drunkenness, onCelebrate }: { drunkenness: number; onCelebrate: 
 
   const [picks, setPicks] = useState<number[]>([]);
   const [result, setResult] = useState<LotoResult | null>(null);
+  const [ticket, setTicket] = useState<number[]>([]);
+  const [drawKey, setDrawKey] = useState(0);
   const [playing, setPlaying] = useState(false);
 
   function toggle(n: number) {
@@ -288,15 +265,15 @@ function Loto({ drunkenness, onCelebrate }: { drunkenness: number; onCelebrate: 
     if (picks.length !== LOTO_PICK_COUNT || credits < LOTO_TICKET_PRICE || playing) return;
     placeBet(LOTO_TICKET_PRICE);
     setPlaying(true);
-    setResult(null);
+    const r = drawLoto(picks, winBias);
+    setResult(r);
+    setTicket(picks); // keep the played grid: the draw highlights against it after picks reset
+    setDrawKey((k) => k + 1);
+    setPicks([]);
     setTimeout(() => {
-      const r = drawLoto(picks, winBias);
-      setResult(r);
       setPlaying(false);
-      const payout = Math.round(LOTO_TICKET_PRICE * r.multiplier);
-      resolve(`Loto — ${r.matches}/5`, LOTO_TICKET_PRICE, payout, onCelebrate);
-      setPicks([]);
-    }, 1400);
+      resolve(`Loto — ${r.matches}/5`, LOTO_TICKET_PRICE, Math.round(LOTO_TICKET_PRICE * r.multiplier), onCelebrate);
+    }, drawDurationMs(r.draw.length));
   }
 
   return (
@@ -310,18 +287,11 @@ function Loto({ drunkenness, onCelebrate }: { drunkenness: number; onCelebrate: 
 
       <NumberGrid pool={LOTO_POOL_SIZE} picks={picks} onToggle={toggle} max={LOTO_PICK_COUNT} label="Tes numéros" />
 
+      {result && <LotteryMachine balls={result.draw} ticket={{ main: ticket, stars: [] }} drawKey={drawKey} />}
       {result && !playing && (
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <p className="mb-2 text-xs text-ice-200/50">Tirage :</p>
-          <div className="flex flex-wrap gap-1.5">
-            {result.draw.map((n) => (
-              <span key={n} className={cn("grid h-8 w-8 place-items-center rounded-lg text-xs font-bold", picks.includes(n) ? "bg-gold-400 text-ink-950" : "bg-white/10 text-white")}>
-                {n}
-              </span>
-            ))}
-          </div>
-          <p className="mt-3 text-sm font-semibold text-white">{result.matches} bon{result.matches > 1 ? "s" : ""} numéro{result.matches > 1 ? "s" : ""}{result.multiplier > 0 ? ` — x${result.multiplier}` : ""}</p>
-        </div>
+        <p className="mt-3 text-center text-sm font-semibold text-white">
+          {result.matches} bon{result.matches > 1 ? "s" : ""} numéro{result.matches > 1 ? "s" : ""}{result.multiplier > 0 ? ` — x${result.multiplier}` : ""}
+        </p>
       )}
 
       <div className="mt-6 flex justify-center">
@@ -342,6 +312,8 @@ function Euromillions({ drunkenness, onCelebrate }: { drunkenness: number; onCel
   const [mains, setMains] = useState<number[]>([]);
   const [stars, setStars] = useState<number[]>([]);
   const [result, setResult] = useState<EuroResult | null>(null);
+  const [ticket, setTicket] = useState<{ main: number[]; stars: number[] }>({ main: [], stars: [] });
+  const [drawKey, setDrawKey] = useState(0);
   const [playing, setPlaying] = useState(false);
 
   const ready = mains.length === EURO_MAIN_COUNT && stars.length === EURO_STAR_COUNT;
@@ -357,16 +329,16 @@ function Euromillions({ drunkenness, onCelebrate }: { drunkenness: number; onCel
     if (!ready || credits < EURO_TICKET_PRICE || playing) return;
     placeBet(EURO_TICKET_PRICE);
     setPlaying(true);
-    setResult(null);
+    const r = drawEuromillions(mains, stars, winBias);
+    setResult(r);
+    setTicket({ main: mains, stars });
+    setDrawKey((k) => k + 1);
+    setMains([]);
+    setStars([]);
     setTimeout(() => {
-      const r = drawEuromillions(mains, stars, winBias);
-      setResult(r);
       setPlaying(false);
-      const payout = Math.round(EURO_TICKET_PRICE * r.multiplier);
-      resolve(`Euromillions — ${r.mainMatches}+${r.starMatches}`, EURO_TICKET_PRICE, payout, onCelebrate);
-      setMains([]);
-      setStars([]);
-    }, 1400);
+      resolve(`Euromillions — ${r.mainMatches}+${r.starMatches}`, EURO_TICKET_PRICE, Math.round(EURO_TICKET_PRICE * r.multiplier), onCelebrate);
+    }, drawDurationMs(r.drawMain.length + r.drawStars.length));
   }
 
   return (
@@ -391,27 +363,19 @@ function Euromillions({ drunkenness, onCelebrate }: { drunkenness: number; onCel
         <NumberGrid pool={EURO_STAR_POOL} picks={stars} onToggle={toggleStar} max={EURO_STAR_COUNT} label="Étoiles" />
       </div>
 
+      {result && (
+        <LotteryMachine
+          balls={[...result.drawMain, ...result.drawStars]}
+          stars={result.drawStars.length}
+          ticket={ticket}
+          drawKey={drawKey}
+        />
+      )}
       {result && !playing && (
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <p className="mb-2 text-xs text-ice-200/50">Tirage :</p>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {result.drawMain.map((n) => (
-              <span key={`m${n}`} className={cn("grid h-8 w-8 place-items-center rounded-lg text-xs font-bold", mains.includes(n) ? "bg-gold-400 text-ink-950" : "bg-white/10 text-white")}>
-                {n}
-              </span>
-            ))}
-            <span className="mx-1 text-ice-200/30">+</span>
-            {result.drawStars.map((n) => (
-              <span key={`s${n}`} className={cn("grid h-8 w-8 place-items-center rounded-full text-xs font-bold", stars.includes(n) ? "bg-electric-400 text-ink-950" : "bg-white/10 text-white")}>
-                {n}
-              </span>
-            ))}
-          </div>
-          <p className="mt-3 text-sm font-semibold text-white">
-            {result.mainMatches} numéro{result.mainMatches > 1 ? "s" : ""} + {result.starMatches} étoile{result.starMatches > 1 ? "s" : ""}
-            {result.multiplier > 0 ? ` — x${result.multiplier}` : ""}
-          </p>
-        </div>
+        <p className="mt-3 text-center text-sm font-semibold text-white">
+          {result.mainMatches} numéro{result.mainMatches > 1 ? "s" : ""} + {result.starMatches} étoile{result.starMatches > 1 ? "s" : ""}
+          {result.multiplier > 0 ? ` — x${result.multiplier}` : ""}
+        </p>
       )}
 
       <div className="mt-6 flex justify-center">

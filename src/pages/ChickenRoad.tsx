@@ -13,6 +13,7 @@ import { maxBetFor } from "../lib/betting";
 import { xpForPayout } from "../lib/xp";
 import { STEPS, DIFFICULTY_LABEL, buildMultiplierTable, rollStepSurvives, type Difficulty } from "../lib/chickenEngine";
 import { tierFromMultiplier, type WinTier } from "../lib/winTiers";
+import { playSound } from "../lib/sounds";
 
 type Phase = "idle" | "running" | "result";
 
@@ -58,12 +59,14 @@ export function ChickenRoad() {
     setTimeout(() => {
       const survives = rollStepSurvives(difficulty, winBias);
       if (!survives) {
+        playSound("boom");
         setBusted(true);
         setPhase("result");
         recordRound({ game: "ChickenRoad", label: DIFFICULTY_LABEL[difficulty], bet, payout: 0, tier: "none" });
         push({ kind: "info", title: "Le poulet s'est fait attraper", description: "Manche perdue." });
       } else {
         const nextStep = step + 1;
+        playSound("tick");
         setStep(nextStep);
         if (nextStep >= STEPS) {
           resolveCashout(nextStep);
@@ -146,11 +149,53 @@ export function ChickenRoad() {
                       )}
                     </AnimatePresence>
 
+                    {isBustedHere && (
+                      // the car that got him: slams down the lane and keeps going
+                      <motion.span
+                        className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 -rotate-90 text-3xl"
+                        initial={{ top: "-30%" }}
+                        animate={{ top: ["-30%", "62%", "140%"] }}
+                        transition={{ duration: 0.55, times: [0, 0.45, 1], ease: "easeIn" }}
+                      >
+                        🚗
+                      </motion.span>
+                    )}
                     <div className="relative z-10 mb-3 text-2xl">
-                      {isBustedHere ? "💥" : isCurrent ? (
-                        <motion.span animate={{ y: [0, -4, 0] }} transition={{ duration: 0.6, repeat: Infinity }}>🐔</motion.span>
+                      {isBustedHere ? (
+                        <>
+                          <motion.span className="block" initial={{ scale: 0 }} animate={{ scale: [0, 1.8, 1.2] }} transition={{ delay: 0.25, duration: 0.4 }}>
+                            💥
+                          </motion.span>
+                          {FEATHERS.map((f, k) => (
+                            <motion.span
+                              key={k}
+                              className="pointer-events-none absolute left-1/2 top-1/2 text-xs"
+                              initial={{ x: 0, y: 0, opacity: 0, rotate: 0 }}
+                              animate={{ x: f.x, y: f.y, opacity: [0, 1, 0], rotate: f.r }}
+                              transition={{ delay: 0.25, duration: 1.4, ease: "easeOut" }}
+                            >
+                              🪶
+                            </motion.span>
+                          ))}
+                        </>
+                      ) : isCurrent ? (
+                        <motion.span
+                          layoutId="chicken"
+                          className="block"
+                          transition={{ layout: { type: "spring", stiffness: 260, damping: 20 } }}
+                        >
+                          <motion.span
+                            key={step}
+                            className="block"
+                            initial={{ y: -26, scaleY: 0.8 }}
+                            animate={stepping ? { x: [0, 3, -3, 0], y: [0, -6, 0] } : { y: [-26, 0, -3, 0], scaleY: [0.8, 1.15, 0.95, 1] }}
+                            transition={stepping ? { duration: 0.25, repeat: Infinity } : { duration: 0.45 }}
+                          >
+                            🐔
+                          </motion.span>
+                        </motion.span>
                       ) : passed ? (
-                        "✅"
+                        <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="block">✅</motion.span>
                       ) : null}
                     </div>
                   </div>
@@ -234,6 +279,8 @@ export function ChickenRoad() {
     </div>
   );
 }
+
+const FEATHERS = Array.from({ length: 7 }, (_, k) => ({ x: (k - 3) * 14, y: -30 - (k % 3) * 18, r: (k - 3) * 60 }));
 
 // Faster traffic on harder difficulties sells the danger even though it never touches the odds.
 const TRAFFIC_SPEED_SCALE: Record<Difficulty, number> = { easy: 0.75, medium: 1, hard: 1.35, extreme: 1.8 };

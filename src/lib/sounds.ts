@@ -7,7 +7,7 @@ function getCtx(): AudioContext {
   return ctx;
 }
 
-type SoundKind = "click" | "spin" | "win" | "bigwin" | "mlg" | "tick" | "chip" | "reel" | "card" | "peg";
+type SoundKind = "click" | "spin" | "win" | "bigwin" | "mlg" | "tick" | "chip" | "reel" | "card" | "peg" | "boom" | "scratch";
 
 const RECIPES: Record<Exclude<SoundKind, "mlg">, { freq: number; duration: number; type: OscillatorType }> = {
   click: { freq: 440, duration: 0.05, type: "square" },
@@ -19,6 +19,8 @@ const RECIPES: Record<Exclude<SoundKind, "mlg">, { freq: number; duration: numbe
   reel: { freq: 140, duration: 0.09, type: "square" }, // reel slamming to a stop
   card: { freq: 3200, duration: 0.04, type: "sawtooth" }, // card sliding off the shoe
   peg: { freq: 2400, duration: 0.02, type: "sine" }, // plinko peg ping
+  boom: { freq: 55, duration: 0.5, type: "sawtooth" }, // crash explosion
+  scratch: { freq: 5200, duration: 0.03, type: "sawtooth" }, // scratching foil
 };
 
 export function playSound(kind: SoundKind) {

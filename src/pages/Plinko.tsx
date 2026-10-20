@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useCasinoStore } from "../store/casinoStore";
 import { useToastStore } from "../store/toastStore";
@@ -79,7 +79,6 @@ export function Plinko() {
   const [bet, setBet] = useState(Math.min(50, maxBet));
   const [dropping, setDropping] = useState(false);
   const [batch, setBatch] = useState<Batch | null>(null);
-  const [landedCount, setLandedCount] = useState(0);
   const [dropKey, setDropKey] = useState(0);
   const [bucketHits, setBucketHits] = useState<Record<number, number>>({});
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
@@ -94,8 +93,10 @@ export function Plinko() {
     }
     placeBet(totalBet);
     const results = Array.from({ length: ballCount }, () => dropBall(risk, winBias));
-    setBatch({ bet, results });
-    setLandedCount(0);
+    const next = { bet, results };
+    setBatch(next);
+    // paid on a timer matching the last ball's flight, so leaving the page mid-drop still pays
+    setTimeout(() => finalize(next), ((results.length - 1) * STAGGER + SEG * (ROWS + 1)) * 1000 + 80);
     setBucketHits({});
     setDropKey((k) => k + 1);
     displacements(results[0]).slice(0, ROWS).forEach((_, r) => setTimeout(() => playSound("peg"), (r + 1) * SEG * 1000));
@@ -105,15 +106,7 @@ export function Plinko() {
   function onBallLanded(bucket: number) {
     playSound("chip");
     setBucketHits((h) => ({ ...h, [bucket]: (h[bucket] ?? 0) + 1 }));
-    setLandedCount((c) => c + 1);
   }
-
-  useEffect(() => {
-    if (dropping && batch && landedCount === batch.results.length) {
-      finalize(batch);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [landedCount]);
 
   function finalize(finished: Batch) {
     const payout = finished.results.reduce((sum, r) => sum + Math.round(finished.bet * r.multiplier), 0);

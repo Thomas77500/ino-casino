@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, animate, useMotionValue } from "framer-motion";
+import { playSound } from "../lib/sounds";
 import { useCasinoStore } from "../store/casinoStore";
 import { useToastStore } from "../store/toastStore";
 import { useGameStatusStore } from "../store/gameStatusStore";
@@ -56,7 +57,7 @@ export function Cases() {
   const [activeCase, setActiveCase] = useState<CaseDef>(CASES[0]);
   const [reel, setReel] = useState<DrawnItem[]>(() => Array.from({ length: 10 }, () => randomDecoyItem(CASES[0].price)));
   const [spinning, setSpinning] = useState(false);
-  const [offset, setOffset] = useState(0);
+  const x = useMotionValue(0);
   const [won, setWon] = useState<DrawnItem | null>(null);
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -77,18 +78,31 @@ export function Cases() {
     setReel(strip);
 
     const containerWidth = trackRef.current?.parentElement?.getBoundingClientRect().width ?? 320;
-    const jitter = (Math.random() - 0.5) * (ITEM_WIDTH * 0.6); // land slightly off-center, more organic
-    const target = -(TRACK_PAD + WINNING_INDEX * ITEM_STEP + ITEM_WIDTH / 2 - containerWidth / 2) + jitter;
-    setOffset(0);
-    requestAnimationFrame(() => setOffset(target));
+    const center = containerWidth / 2;
+    const jitter = (Math.random() - 0.5) * (ITEM_WIDTH * 0.8); // land off-center, keeps the suspense
+    const target = -(TRACK_PAD + WINNING_INDEX * ITEM_STEP + ITEM_WIDTH / 2 - center) + jitter;
+    x.set(0);
     setSpinning(true);
-
-    setTimeout(() => finalize(winner), SPIN_DURATION * 1000);
+    let lastIdx = -1;
+    // a "tick" every time a card edge crosses the marker, like the CS case ratchet
+    animate(x, target, {
+      duration: SPIN_DURATION,
+      ease: [0.12, 0.8, 0.18, 1],
+      onUpdate: (v) => {
+        const idx = Math.floor((center - v - TRACK_PAD) / ITEM_STEP);
+        if (idx !== lastIdx) {
+          lastIdx = idx;
+          playSound("tick");
+        }
+      },
+    });
+    setTimeout(() => finalize(winner), SPIN_DURATION * 1000 + 50);
   }
 
   function finalize(item: DrawnItem) {
     setSpinning(false);
     setWon(item);
+    playSound(item.value > activeCase.price ? "win" : "chip");
     if (item.value > 0) {
       award(item.value);
       addXp(xpForPayout(item.value));
@@ -138,11 +152,33 @@ export function Cases() {
       <Card className="p-4 sm:p-6" glow>
         <div className="relative mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-ink-950/60 py-4">
           <div className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-0.5 -translate-x-1/2 bg-gold-400 shadow-glow-gold" />
-          <div ref={trackRef} className="flex gap-2 px-2" style={{ transform: `translateX(${offset}px)`, transition: spinning ? `transform ${SPIN_DURATION}s cubic-bezier(0.15, 0.85, 0.2, 1)` : "none" }}>
-            {reel.map((item, i) => (
-              <ItemCard key={i} item={item} />
-            ))}
-          </div>
+          <div className="pointer-events-none absolute left-1/2 top-0 z-10 h-0 w-0 -translate-x-1/2 border-x-[8px] border-t-[10px] border-x-transparent border-t-gold-400" />
+          <div className="pointer-events-none absolute bottom-0 left-1/2 z-10 h-0 w-0 -translate-x-1/2 border-x-[8px] border-b-[10px] border-x-transparent border-b-gold-400" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-16 bg-gradient-to-r from-ink-950 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 bg-gradient-to-l from-ink-950 to-transparent" />
+          <motion.div ref={trackRef} className="flex gap-2 px-2" style={{ x }}>
+            {reel.map((item, i) => {
+              const isWinner = won !== null && !spinning && i === WINNING_INDEX;
+              return (
+                <motion.div
+                  key={i}
+                  animate={won && !spinning ? (isWinner ? { scale: [1, 1.12, 1.06], opacity: 1 } : { opacity: 0.25, scale: 0.94 }) : { opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.5 }}
+                  className={cn("relative", isWinner && "z-[5]")}
+                >
+                  <ItemCard item={item} />
+                  {isWinner && (
+                    <motion.div
+                      className={cn("pointer-events-none absolute -inset-1 rounded-2xl border-2", RARITY_STYLE[item.rarity].border)}
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 1, repeat: Infinity }}
+                      style={{ boxShadow: "0 0 24px currentColor" }}
+                    />
+                  )}
+                </motion.div>
+              );
+            })}
+          </motion.div>
         </div>
 
         {won && !spinning && (
