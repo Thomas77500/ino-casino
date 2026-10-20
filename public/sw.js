@@ -1,33 +1,54 @@
-const CACHE = "ino-casino-v1";
+// Bump on any change to this file: activate() wipes every other cache, so a stale app shell from
+// a previous deploy can never be served again.
+const CACHE = "ino-casino-v2";
 
-self.addEventListener("install", (e) => {
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Runtime cache-as-you-go: no precache manifest to keep in sync with Vite's hashed build output.
-// Navigations go network-first (so app updates show up immediately); other GET assets are
-// cache-first with a network fallback, so the app shell still loads offline once visited.
+// Navigations: always network-first, keeping the last good HTML only as an offline fallback.
+// Assets: only Vite's hashed /assets/* files are cached (their content never changes for a given
+// name), so a cached index can never point at chunks a newer deploy has removed.
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET" || !e.request.url.startsWith(self.location.origin)) return;
+  const req = e.request;
+  if (req.method !== "GET" || !req.url.startsWith(self.location.origin)) return;
+  const url = new URL(req.url);
 
-  if (e.request.mode === "navigate") {
-    e.respondWith(fetch(e.request).catch(() => caches.match(e.request).then((r) => r ?? caches.match("/"))));
+  if (req.mode === "navigate") {
+    e.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone(); // clone synchronously, before the page consumes the body
+            caches.open(CACHE).then((c) => c.put("/", copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match("/").then((r) => r ?? Response.error()))
+    );
     return;
   }
 
+  if (!url.pathname.startsWith("/assets/")) return;
+
   e.respondWith(
-    caches.match(e.request).then(
+    caches.match(req).then(
       (cached) =>
         cached ??
-        fetch(e.request).then((res) => {
-          if (res.ok) caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
+        fetch(req).then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
           return res;
         })
     )

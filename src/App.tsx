@@ -26,38 +26,52 @@ import { supabase } from "./lib/supabase";
 import { Home } from "./pages/Home";
 import { Games } from "./pages/Games";
 
+// If a page chunk 404s (tab opened before a deploy), reload once to fetch the new build instead
+// of leaving a blank screen. Guarded so a genuinely broken chunk can't cause a reload loop.
+function reloadOnChunkError<T>(load: () => Promise<T>): Promise<T> {
+  return load().catch((err) => {
+    const last = Number(sessionStorage.getItem("chunk-reload-at") ?? 0);
+    if (Date.now() - last > 10_000) {
+      sessionStorage.setItem("chunk-reload-at", String(Date.now()));
+      window.location.reload();
+      return new Promise<T>(() => {}); // keep Suspense waiting while the page reloads
+    }
+    throw err;
+  });
+}
+
 // Code-split every other page — each game/section only loads when a player actually opens it,
 // instead of all ~20 pages landing in one bundle on first paint.
-const Slots = lazy(() => import("./pages/Slots").then((m) => ({ default: m.Slots })));
-const Blackjack = lazy(() => import("./pages/Blackjack").then((m) => ({ default: m.Blackjack })));
-const Roulette = lazy(() => import("./pages/Roulette").then((m) => ({ default: m.Roulette })));
-const ChickenRoad = lazy(() => import("./pages/ChickenRoad").then((m) => ({ default: m.ChickenRoad })));
-const Plinko = lazy(() => import("./pages/Plinko").then((m) => ({ default: m.Plinko })));
-const Crash = lazy(() => import("./pages/Crash").then((m) => ({ default: m.Crash })));
-const ScratchCards = lazy(() => import("./pages/ScratchCards").then((m) => ({ default: m.ScratchCards })));
-const Bourse = lazy(() => import("./pages/Bourse").then((m) => ({ default: m.Bourse })));
-const Braquage = lazy(() => import("./pages/Braquage").then((m) => ({ default: m.Braquage })));
-const Boosters = lazy(() => import("./pages/Boosters").then((m) => ({ default: m.Boosters })));
-const Cases = lazy(() => import("./pages/Cases").then((m) => ({ default: m.Cases })));
-const Pmu = lazy(() => import("./pages/Pmu").then((m) => ({ default: m.Pmu })));
-const Ministry = lazy(() => import("./pages/Ministry").then((m) => ({ default: m.Ministry })));
-const Club = lazy(() => import("./pages/Club").then((m) => ({ default: m.Club })));
-const Laundering = lazy(() => import("./pages/Laundering").then((m) => ({ default: m.Laundering })));
-const Blackmarket = lazy(() => import("./pages/Blackmarket").then((m) => ({ default: m.Blackmarket })));
-const Darktable = lazy(() => import("./pages/Darktable").then((m) => ({ default: m.Darktable })));
-const Sect = lazy(() => import("./pages/Sect").then((m) => ({ default: m.Sect })));
-const Startup = lazy(() => import("./pages/Startup").then((m) => ({ default: m.Startup })));
-const Bookmaker = lazy(() => import("./pages/Bookmaker").then((m) => ({ default: m.Bookmaker })));
-const Mafia = lazy(() => import("./pages/Mafia").then((m) => ({ default: m.Mafia })));
-const Area51 = lazy(() => import("./pages/Area51").then((m) => ({ default: m.Area51 })));
-const Bonus = lazy(() => import("./pages/Bonus").then((m) => ({ default: m.Bonus })));
-const Rewards = lazy(() => import("./pages/Rewards").then((m) => ({ default: m.Rewards })));
-const Leaderboard = lazy(() => import("./pages/Leaderboard").then((m) => ({ default: m.Leaderboard })));
-const Shop = lazy(() => import("./pages/Shop").then((m) => ({ default: m.Shop })));
-const Friends = lazy(() => import("./pages/Friends").then((m) => ({ default: m.Friends })));
-const Salons = lazy(() => import("./pages/Salons").then((m) => ({ default: m.Salons })));
-const Profile = lazy(() => import("./pages/Profile").then((m) => ({ default: m.Profile })));
-const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
+const Slots = lazy(() => reloadOnChunkError(() => import("./pages/Slots").then((m) => ({ default: m.Slots }))));
+const Blackjack = lazy(() => reloadOnChunkError(() => import("./pages/Blackjack").then((m) => ({ default: m.Blackjack }))));
+const Roulette = lazy(() => reloadOnChunkError(() => import("./pages/Roulette").then((m) => ({ default: m.Roulette }))));
+const ChickenRoad = lazy(() => reloadOnChunkError(() => import("./pages/ChickenRoad").then((m) => ({ default: m.ChickenRoad }))));
+const Plinko = lazy(() => reloadOnChunkError(() => import("./pages/Plinko").then((m) => ({ default: m.Plinko }))));
+const Crash = lazy(() => reloadOnChunkError(() => import("./pages/Crash").then((m) => ({ default: m.Crash }))));
+const ScratchCards = lazy(() => reloadOnChunkError(() => import("./pages/ScratchCards").then((m) => ({ default: m.ScratchCards }))));
+const Bourse = lazy(() => reloadOnChunkError(() => import("./pages/Bourse").then((m) => ({ default: m.Bourse }))));
+const Braquage = lazy(() => reloadOnChunkError(() => import("./pages/Braquage").then((m) => ({ default: m.Braquage }))));
+const Boosters = lazy(() => reloadOnChunkError(() => import("./pages/Boosters").then((m) => ({ default: m.Boosters }))));
+const Cases = lazy(() => reloadOnChunkError(() => import("./pages/Cases").then((m) => ({ default: m.Cases }))));
+const Pmu = lazy(() => reloadOnChunkError(() => import("./pages/Pmu").then((m) => ({ default: m.Pmu }))));
+const Ministry = lazy(() => reloadOnChunkError(() => import("./pages/Ministry").then((m) => ({ default: m.Ministry }))));
+const Club = lazy(() => reloadOnChunkError(() => import("./pages/Club").then((m) => ({ default: m.Club }))));
+const Laundering = lazy(() => reloadOnChunkError(() => import("./pages/Laundering").then((m) => ({ default: m.Laundering }))));
+const Blackmarket = lazy(() => reloadOnChunkError(() => import("./pages/Blackmarket").then((m) => ({ default: m.Blackmarket }))));
+const Darktable = lazy(() => reloadOnChunkError(() => import("./pages/Darktable").then((m) => ({ default: m.Darktable }))));
+const Sect = lazy(() => reloadOnChunkError(() => import("./pages/Sect").then((m) => ({ default: m.Sect }))));
+const Startup = lazy(() => reloadOnChunkError(() => import("./pages/Startup").then((m) => ({ default: m.Startup }))));
+const Bookmaker = lazy(() => reloadOnChunkError(() => import("./pages/Bookmaker").then((m) => ({ default: m.Bookmaker }))));
+const Mafia = lazy(() => reloadOnChunkError(() => import("./pages/Mafia").then((m) => ({ default: m.Mafia }))));
+const Area51 = lazy(() => reloadOnChunkError(() => import("./pages/Area51").then((m) => ({ default: m.Area51 }))));
+const Bonus = lazy(() => reloadOnChunkError(() => import("./pages/Bonus").then((m) => ({ default: m.Bonus }))));
+const Rewards = lazy(() => reloadOnChunkError(() => import("./pages/Rewards").then((m) => ({ default: m.Rewards }))));
+const Leaderboard = lazy(() => reloadOnChunkError(() => import("./pages/Leaderboard").then((m) => ({ default: m.Leaderboard }))));
+const Shop = lazy(() => reloadOnChunkError(() => import("./pages/Shop").then((m) => ({ default: m.Shop }))));
+const Friends = lazy(() => reloadOnChunkError(() => import("./pages/Friends").then((m) => ({ default: m.Friends }))));
+const Salons = lazy(() => reloadOnChunkError(() => import("./pages/Salons").then((m) => ({ default: m.Salons }))));
+const Profile = lazy(() => reloadOnChunkError(() => import("./pages/Profile").then((m) => ({ default: m.Profile }))));
+const Admin = lazy(() => reloadOnChunkError(() => import("./pages/Admin").then((m) => ({ default: m.Admin }))));
 
 const PAGES: Record<AppTab, (onNavigate: (t: AppTab) => void) => JSX.Element> = {
   home: (onNavigate) => <Home onNavigate={onNavigate} />,
