@@ -319,11 +319,9 @@ export function shouldTriggerSurpriseAudit(): boolean {
 }
 
 // ============================================================================
-// Factions — la confiance de chaque camp de la base (0-100, départ à 50) envers ta gestion du
-// confinement. Chaque opération déplace la confiance de tous les camps à la fois selon leur
-// affinité pour l'agressivité ou la discrétion, et la confiance moyenne pèse ensuite dans les
-// chances de survie d'un audit — un programme peut sembler personnellement maîtrisé mais tomber
-// quand même si tous les camps de la base se méfient de sa direction.
+// Factions — 5 camps (confiance 0-100, départ à 50). `lean` dit comment chaque camp juge la prise
+// de risque ; chaque posture a en plus sa propre affinité par camp (voir la page de l'arc), et la
+// confiance moyenne pèse dans la survie aux descentes/audits. Logique commune : lib/rpEngine.ts.
 // ============================================================================
 
 export interface Faction {
@@ -341,17 +339,6 @@ export const FACTIONS: Faction[] = [
   { id: "contractants", label: "Les Sous-Traitants Privés", short: "Contrat.", lean: 0.4 },
 ];
 
-export const START_FACTION_CONFIDENCE = 50;
-
-export function applyFactionConfidence(confidence: Record<string, number>, approach: OpsApproach): Record<string, number> {
-  const next = { ...confidence };
-  const sign = approach === "agressive" ? 1 : -1;
-  for (const f of FACTIONS) {
-    const delta = Math.round(f.lean * sign * randInt(1, 4));
-    next[f.id] = Math.max(0, Math.min(100, (next[f.id] ?? START_FACTION_CONFIDENCE) + delta));
-  }
-  return next;
-}
 
 // ============================================================================
 // Opérations de confinement — 12 à 18 par année, chacune visant un témoin/fuite tirée au hasard.
@@ -383,8 +370,6 @@ export const WITNESSES: Witness[] = [
   { id: "photographe", label: "Un Photographe Amateur d'Étoiles", pool: "un astrophotographe amateur" },
 ];
 
-export type OpsApproach = "discrete" | "agressive";
-
 export function generateOp(): Witness {
   return pick(WITNESSES);
 }
@@ -394,23 +379,7 @@ export function opsForYear(): Witness[] {
   return Array.from({ length: count }, generateOp);
 }
 
-export interface OpResult {
-  success: boolean;
-  narrative: string;
-  control: number;
-  leaks: number;
-  budget: number;
-}
 
-export function resolveOp(witness: Witness, approach: OpsApproach, bias = 1): OpResult {
-  const successChance = 0.6 + (approach === "discrete" ? 0.06 : -0.04);
-  const success = biasedChance(successChance, bias);
-  const budget = success ? -randInt(700, approach === "discrete" ? 6000 : 2200) : 0;
-  const control = success ? randInt(1, approach === "agressive" ? 6 : 3) : -randInt(0, 2);
-  const leaks = approach === "agressive" ? randInt(2, 7) : randInt(0, 2);
-  const narrative = `${witness.label} — ${success ? `Confidentialité obtenue auprès de ${witness.pool}.` : `${witness.pool} refuse de coopérer.`}`;
-  return { success, narrative, control, leaks, budget };
-}
 
 // ============================================================================
 // Chaos — issue spéciale des choix "risqués" (recherche accélérée, gadget testé pour de rire).

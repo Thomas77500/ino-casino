@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { LockedGame } from "../components/games/GameTile";
 import { motion } from "framer-motion";
+import { OptionList } from "../components/games/ArcGame";
+import { biasedChance, randInt } from "../lib/rng";
+import { adaptEvent, buildEventOptions, seasonInterludes, factionReactions, clamp, type Ctx, type Effect, type Interlude, type RpOption, type RpState } from "../lib/rpEngine";
 import { useCasinoStore } from "../store/casinoStore";
 import { useToastStore } from "../store/toastStore";
 import { useGameStatusStore } from "../store/gameStatusStore";
@@ -29,6 +32,24 @@ import {
   resolveClubSale,
 } from "../lib/clubEngine";
 
+const KEYS = { a: "support", r: "-", m: "budget" };
+const RP_FACTIONS = CLUB_STAKEHOLDERS.map((f) => ({ id: f.id, label: f.label, short: f.short, lean: f.spendLean }));
+const RP_CTX: Ctx = {
+  factions: RP_FACTIONS,
+  mUnit: 5,
+  mFloor: -1e9, // budget is a score here, not cash — never blocks a choice
+  lexicon: {
+    delegate: "ton directeur sportif",
+    gamble: "Promettre la Ligue des Champions en conférence de presse",
+    gambleWin: "La salle de presse s'enflamme, les supporters y croient à nouveau.",
+    gambleLose: "Tes promesses deviennent un mème. Même les ultras se moquent.",
+  },
+  chaos: () => {
+    const c = resolveClubChaos();
+    return { a: c.support, r: 0, m: c.budget, factions: factionReactions(RP_FACTIONS, { a: c.support, r: 0 }), text: c.outcome, success: c.good, chaos: true };
+  },
+};
+
 function average(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
@@ -42,7 +63,7 @@ const WINNING_INDEX = 50;
 const SPIN_DURATION = 5.5;
 
 type View = "presidence" | "palmares" | "salon";
-type Phase = "idle" | "spinning" | "votes" | "happening" | "event" | "farewell" | "recap";
+type Phase = "idle" | "spinning" | "votes" | "happening" | "interlude" | "event" | "farewell" | "recap";
 
 interface PresidencyState {
   club: ClubDef;
@@ -56,6 +77,8 @@ interface PresidencyState {
   bills: Bill[];
   billIndex: number;
   usedHappeningIds: string[];
+  flags: string[];
+  interludes: Interlude[];
 }
 
 interface RoundResult {
@@ -91,6 +114,10 @@ function ReelTile({ club }: { club: ClubDef }) {
       <p className="text-[9px] uppercase tracking-wide text-white/60">{club.league}</p>
     </div>
   );
+}
+
+function rpView(st: { support: number; budget: number; stakeholderConfidence: Record<string, number>; flags: string[] }): RpState {
+  return { a: st.support, r: 0, m: st.budget, factions: st.stakeholderConfidence, flags: st.flags, journal: [], stanceCounts: {} };
 }
 
 export function Club() {
@@ -167,6 +194,8 @@ export function Club() {
       events: drawPresidencyEvents(), startYear,
       bills: billsForSeason(club), billIndex: 0,
       usedHappeningIds: [],
+      flags: [],
+      interludes: [],
     });
     setPhase("votes");
   }
@@ -209,10 +238,10 @@ export function Club() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  function voteBill(choice: VoteChoice | "bribe") {
+  function voteBill(choice: VoteChoice | "bribe" | "abstain" | "amend") {
     if (!presidency || resolving) return;
     const bill = presidency.bills[presidency.billIndex];
-    const vote: VoteChoice = choice === "bribe" ? bill.bribeOffer!.direction : choice;
+    const vote: VoteChoice = choice === "bribe" ? bill.bribeOffer!.direction : choice === "abstain" ? "contre" : choice === "amend" ? "pour" : choice;
     let extraText = "";
     let extraPenalty = 0;
 
@@ -227,12 +256,29 @@ export function Club() {
       }
     }
 
-    const result = resolveTransferVote(bill, vote, winBias);
+    let result = resolveTransferVote(bill, vote, winBias);
+    // Neither yes nor no: abstaining dodges the fallout but looks weak; amending is a gamble on
+    // softening the text (half the budget effect, a small support bonus) that can backfire.
+    let confSoftener = 0;
+    if (choice === "abstain") {
+      result = { ...result, support: -randInt(0, 2), narrative: `🤐 Tu t'abstiens. ${result.narrative}` };
+      confSoftener = -1;
+    } else if (choice === "amend") {
+      if (biasedChance(0.55, winBias)) {
+        result = { ...result, support: result.support + 2, budget: Math.round(result.budget / 2), narrative: `✍️ Ta contre-proposition convainc le board. ${result.narrative}` };
+        confSoftener = 1;
+      } else {
+        result = { ...result, support: -3, budget: 0, narrative: "✍️ Ta contre-proposition fait ricaner le board." };
+        confSoftener = -1;
+      }
+    }
     let newSupport = Math.max(0, Math.min(100, presidency.support + result.support - extraPenalty));
     const newBudget = presidency.budget + result.budget;
     const wageUpdate = applyVoteWageImpact(presidency.wageRatio, bill, result.passed);
     if (wageUpdate.narrative) extraText += `\n\n${wageUpdate.narrative}`;
-    const newStakeholderConfidence = applyStakeholderConfidence(presidency.stakeholderConfidence, bill, vote);
+    const newStakeholderConfidence = confSoftener !== 0
+      ? Object.fromEntries(Object.entries(presidency.stakeholderConfidence).map(([id, v]) => [id, clamp(v + confSoftener, 0, 100)]))
+      : applyStakeholderConfidence(presidency.stakeholderConfidence, bill, vote);
 
     let ousted = newSupport <= 0;
     if (!ousted && (newSupport <= 30 || shouldTriggerSurpriseOuster())) {
@@ -270,10 +316,11 @@ export function Club() {
         setResolving(false);
         if (triggerHappening) setPhase("happening");
       } else {
-        setPresidency(carried);
+        const interludes = seasonInterludes(rpView(carried), RP_CTX);
+        setPresidency({ ...carried, interludes });
         setLastOutcome(null);
         setResolving(false);
-        setPhase("event");
+        setPhase(interludes.length > 0 ? "interlude" : "event");
       }
     }, extraText.includes("Motion de défiance") ? 3200 : 1100);
   }
@@ -287,35 +334,26 @@ export function Club() {
     }, 1400);
   }
 
-  function resolveHappening(choice: "a" | "b") {
-    if (!presidency || !happening || resolving) return;
-    const picked = choice === "a" ? happening.choices[0] : happening.choices[1];
-    let supportDelta = 0;
-    let budgetDelta = 0;
-    let outcomeText = "";
 
-    if (picked.chaos) {
-      const r = resolveClubChaos();
-      supportDelta = r.support;
-      budgetDelta = r.budget;
-      outcomeText = r.outcome;
+  // Every narrative decision goes through here. Heat from the shared RP options (bluffs gone
+  // wrong, botched delegations) has no axis of its own in this arc, so it costs support instead.
+  function resolveRp(eff: Effect, kind: "event" | "happening" | "interlude") {
+    if (!presidency || resolving) return;
+    let newSupport = clamp(presidency.support + eff.a - Math.round(eff.r / 2), 0, 100);
+    const newBudget = presidency.budget + eff.m;
+    const wageUpdate = applyEventWageImpact(presidency.wageRatio, eff.m);
+    let outcomeText = eff.text + (wageUpdate.narrative ? `\n\n${wageUpdate.narrative}` : "");
+    const conf = { ...presidency.stakeholderConfidence };
+    for (const [id, d] of Object.entries(eff.factions)) conf[id] = clamp((conf[id] ?? 50) + d, 0, 100);
+    let flags = presidency.flags.filter((f) => !(eff.consume ?? []).includes(f));
+    if (eff.flags) flags = [...flags, ...eff.flags];
+    if (eff.chaos) {
       setChaosActive(true);
       setTimeout(() => setChaosActive(false), 2400);
-    } else {
-      supportDelta = picked.support;
-      budgetDelta = picked.budget;
-      outcomeText = picked.outcome;
     }
-
-    let newSupport = Math.max(0, Math.min(100, presidency.support + supportDelta));
-    const newBudget = presidency.budget + budgetDelta;
-    const wageUpdate = applyEventWageImpact(presidency.wageRatio, budgetDelta);
-    if (wageUpdate.narrative) outcomeText += `\n\n${wageUpdate.narrative}`;
     let ousted = newSupport <= 0;
-
     if (!ousted && newSupport <= 30) {
-      const avgConfidence = average(Object.values(presidency.stakeholderConfidence));
-      const om = resolveOusterMotion(newSupport, winBias, avgConfidence);
+      const om = resolveOusterMotion(newSupport, winBias, average(Object.values(conf)));
       outcomeText += `\n\n${om.narrative}`;
       if (om.survived) {
         newSupport = Math.max(0, newSupport - om.supportPenalty);
@@ -329,94 +367,47 @@ export function Club() {
     setLastOutcome(outcomeText);
 
     setTimeout(() => {
-      setHappening(null);
-      if (ousted) {
-        finalizeRound(presidency.club, newSupport, newBudget, computeOutcome(presidency.club, newSupport, newBudget, ousted), ousted);
-      } else {
-        setPresidency({ ...presidency, support: newSupport, budget: newBudget, wageRatio: wageUpdate.wageRatio });
-        setLastOutcome(null);
-        setResolving(false);
-        setPhase("votes");
-      }
-    }, outcomeText.includes("Motion de défiance") ? 3200 : 1600);
-  }
-
-  function choose(choice: "a" | "b" | "bribe") {
-    if (!presidency || resolving) return;
-    const event = presidency.events[presidency.turn];
-    let supportDelta = 0;
-    let budgetDelta = 0;
-    let outcomeText = "";
-
-    if (choice === "bribe") {
-      const cost = bribeCost(presidency.club);
-      if (credits < cost) {
-        push({ kind: "info", title: "Crédits insuffisants pour soudoyer" });
-        return;
-      }
-      placeBet(cost);
-      const r = resolveBribe(winBias);
-      supportDelta = r.support;
-      budgetDelta = r.budget;
-      outcomeText = r.outcome;
-      push({ kind: r.success ? "success" : "info", title: r.success ? "Soudoiement réussi" : "Soudoiement éventé" });
-    } else {
-      const picked = choice === "a" ? event.choices[0] : event.choices[1];
-      if (picked.chaos) {
-        const r = resolveClubChaos();
-        supportDelta = r.support;
-        budgetDelta = r.budget;
-        outcomeText = r.outcome;
-        setChaosActive(true);
-        setTimeout(() => setChaosActive(false), 2400);
-      } else {
-        supportDelta = picked.support;
-        budgetDelta = picked.budget;
-        outcomeText = picked.outcome;
-      }
-    }
-
-    let newSupport = Math.max(0, Math.min(100, presidency.support + supportDelta));
-    const newBudget = presidency.budget + budgetDelta;
-    const wageUpdate = applyEventWageImpact(presidency.wageRatio, budgetDelta);
-    if (wageUpdate.narrative) outcomeText += `\n\n${wageUpdate.narrative}`;
-    let ousted = newSupport <= 0;
-    const nextTurn = presidency.turn + 1;
-
-    if (!ousted && newSupport <= 30) {
-      const avgConfidence = average(Object.values(presidency.stakeholderConfidence));
-      const om = resolveOusterMotion(newSupport, winBias, avgConfidence);
-      outcomeText += `\n\n${om.narrative}`;
-      if (om.survived) {
-        newSupport = Math.max(0, newSupport - om.supportPenalty);
-        ousted = newSupport <= 0;
-      } else {
-        ousted = true;
-      }
-    }
-
-    setResolving(true);
-    setLastOutcome(outcomeText);
-
-    setTimeout(() => {
+      setLastOutcome(null);
+      setResolving(false);
       if (ousted) {
         finalizeRound(presidency.club, newSupport, newBudget, computeOutcome(presidency.club, newSupport, newBudget, true), true);
-      } else if (nextTurn >= PRESIDENCY_LENGTH) {
-        setPresidency({ ...presidency, turn: nextTurn, support: newSupport, budget: newBudget, wageRatio: wageUpdate.wageRatio });
-        setLastOutcome(null);
-        setResolving(false);
-        setPhase("farewell");
-      } else {
-        setPresidency({
-          ...presidency, turn: nextTurn, support: newSupport, budget: newBudget, wageRatio: wageUpdate.wageRatio,
-          bills: billsForSeason(presidency.club), billIndex: 0,
-        });
-        setLastOutcome(null);
-        setResolving(false);
+        return;
+      }
+      const carried = { ...presidency, support: newSupport, budget: newBudget, wageRatio: wageUpdate.wageRatio, stakeholderConfidence: conf, flags };
+      if (kind === "happening") {
+        setHappening(null);
+        setPresidency(carried);
         setPhase("votes");
+      } else if (kind === "interlude") {
+        const rest = carried.interludes.slice(1);
+        setPresidency({ ...carried, interludes: rest });
+        setPhase(rest.length > 0 ? "interlude" : "event");
+      } else {
+        const nextTurn = presidency.turn + 1;
+        if (nextTurn >= PRESIDENCY_LENGTH) {
+          setPresidency({ ...carried, turn: nextTurn });
+          setPhase("farewell");
+        } else {
+          setPresidency({ ...carried, turn: nextTurn, bills: billsForSeason(presidency.club), billIndex: 0 });
+          setPhase("votes");
+        }
       }
     }, outcomeText.includes("Motion de défiance") ? 3200 : 2000);
   }
+
+  function bribeEvent() {
+    if (!presidency || resolving) return;
+    const cost = bribeCost(presidency.club);
+    if (credits < cost) {
+      push({ kind: "info", title: "Crédits insuffisants pour soudoyer" });
+      return;
+    }
+    placeBet(cost);
+    const r = resolveBribe(winBias);
+    push({ kind: r.success ? "success" : "info", title: r.success ? "Soudoiement réussi" : "Soudoiement éventé" });
+    resolveRp({ a: r.support, r: 0, m: r.budget, factions: {}, text: r.outcome, success: r.success }, "event");
+  }
+
 
   function endPresidencyQuietly() {
     if (!presidency) return;
@@ -504,7 +495,7 @@ export function Club() {
             </Card>
           )}
 
-          {(phase === "votes" || phase === "happening" || phase === "event" || phase === "farewell") && presidency && (
+          {(phase === "votes" || phase === "happening" || phase === "interlude" || phase === "event" || phase === "farewell") && presidency && (
             <div className="flex flex-col gap-4">
               <Card className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -587,12 +578,18 @@ export function Club() {
                     </div>
                   ) : (
                     <div className="mt-5 flex flex-col gap-2">
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-2 gap-2 sm:flex">
                         <Button variant="secondary" onClick={() => voteBill("pour")} disabled={resolving} className="flex-1">
                           Pour
                         </Button>
                         <Button variant="secondary" onClick={() => voteBill("contre")} disabled={resolving} className="flex-1">
                           Contre
+                        </Button>
+                        <Button variant="secondary" onClick={() => voteBill("abstain")} disabled={resolving} className="flex-1">
+                          🤐 Abstention
+                        </Button>
+                        <Button variant="secondary" onClick={() => voteBill("amend")} disabled={resolving} className="flex-1">
+                          ✍️ Amender <span className="ml-1 text-[10px] text-gold-300">55%</span>
                         </Button>
                         {currentBill.bribeOffer && (
                           <Button variant="gold" onClick={() => voteBill("bribe")} disabled={resolving} className="flex-1">
@@ -621,14 +618,24 @@ export function Club() {
                       {lastOutcome}
                     </motion.div>
                   ) : (
-                    <div className="mt-5 flex flex-col gap-2">
-                      <Button variant="secondary" onClick={() => resolveHappening("a")} disabled={resolving} className="w-full">
-                        {happening.choices[0].label}
-                      </Button>
-                      <Button variant="secondary" onClick={() => resolveHappening("b")} disabled={resolving} className="w-full">
-                        {happening.choices[1].label}
-                      </Button>
-                    </div>
+                    <OptionList options={buildEventOptions(adaptEvent(happening, KEYS), rpView(presidency), RP_CTX)} onPick={(o: RpOption) => resolveRp(o.resolve(), "happening")} disabled={resolving} />
+                  )}
+                </Card>
+              )}
+
+              {phase === "interlude" && presidency.interludes[0] && (
+                <Card className="border-gold-400/30 p-4 sm:p-6" glow>
+                  <Badge tone="gold">Conséquence</Badge>
+                  <h2 className="mt-3 font-display text-lg font-bold text-white">
+                    {presidency.interludes[0].emoji} {presidency.interludes[0].title}
+                  </h2>
+                  <p className="mt-2 text-sm text-ice-200/70">{presidency.interludes[0].description}</p>
+                  {lastOutcome !== null ? (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
+                      {lastOutcome}
+                    </motion.div>
+                  ) : (
+                    <OptionList options={presidency.interludes[0].options} onPick={(o: RpOption) => resolveRp(o.resolve(), "interlude")} disabled={resolving} />
                   )}
                 </Card>
               )}
@@ -646,17 +653,12 @@ export function Club() {
                       {lastOutcome}
                     </motion.div>
                   ) : (
-                    <div className="mt-5 flex flex-col gap-2">
-                      <Button variant="secondary" onClick={() => choose("a")} disabled={resolving} className="w-full">
-                        {event.choices[0].label}
-                      </Button>
-                      <Button variant="secondary" onClick={() => choose("b")} disabled={resolving} className="w-full">
-                        {event.choices[1].label}
-                      </Button>
-                      <Button variant="gold" onClick={() => choose("bribe")} disabled={resolving || credits < bribeCost(presidency.club)} className="w-full">
+                    <>
+                      <OptionList options={buildEventOptions(adaptEvent(event, KEYS), rpView(presidency), RP_CTX)} onPick={(o: RpOption) => resolveRp(o.resolve(), "event")} disabled={resolving} />
+                      <Button variant="gold" onClick={bribeEvent} disabled={resolving || credits < bribeCost(presidency.club)} className="mt-2 w-full">
                         💰 Soudoyer l'arbitre — {formatCredits(bribeCost(presidency.club))}
                       </Button>
-                    </div>
+                    </>
                   )}
                 </Card>
               )}

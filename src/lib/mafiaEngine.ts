@@ -335,11 +335,9 @@ export function shouldTriggerSurpriseRaid(): boolean {
 }
 
 // ============================================================================
-// Factions — la confiance de chaque camp du quartier (0-100, départ à 50) envers la manière dont
-// tu opères. Chaque racket déplace la confiance de tous les camps à la fois selon leur affinité
-// pour le muscle ou la discrétion, et la confiance moyenne pèse ensuite dans les chances de survie
-// d'une descente de police — un règne peut être personnellement respecté mais tomber quand même si
-// tous les camps du quartier se méfient de lui.
+// Factions — 5 camps (confiance 0-100, départ à 50). `lean` dit comment chaque camp juge la prise
+// de risque ; chaque posture a en plus sa propre affinité par camp (voir la page de l'arc), et la
+// confiance moyenne pèse dans la survie aux descentes/audits. Logique commune : lib/rpEngine.ts.
 // ============================================================================
 
 export interface Faction {
@@ -357,17 +355,6 @@ export const FACTIONS: Faction[] = [
   { id: "familles-rivales", label: "Les Familles Rivales", short: "Rivaux", lean: 0.5 },
 ];
 
-export const START_FACTION_CONFIDENCE = 50;
-
-export function applyFactionConfidence(confidence: Record<string, number>, approach: RacketApproach): Record<string, number> {
-  const next = { ...confidence };
-  const sign = approach === "musclee" ? 1 : -1;
-  for (const f of FACTIONS) {
-    const delta = Math.round(f.lean * sign * randInt(1, 4));
-    next[f.id] = Math.max(0, Math.min(100, (next[f.id] ?? START_FACTION_CONFIDENCE) + delta));
-  }
-  return next;
-}
 
 // ============================================================================
 // Rackets — 12 à 18 par saison, chacun visant un commerce tiré au hasard. L'approche "discrète"
@@ -398,8 +385,6 @@ export const BUSINESSES: Business[] = [
   { id: "salle-sport", label: "La Salle de Sport", pool: "un patron de salle costaud" },
 ];
 
-export type RacketApproach = "discrete" | "musclee";
-
 export function generateRacket(): Business {
   return pick(BUSINESSES);
 }
@@ -409,23 +394,7 @@ export function racketsForSeason(): Business[] {
   return Array.from({ length: count }, generateRacket);
 }
 
-export interface RacketResult {
-  success: boolean;
-  narrative: string;
-  respect: number;
-  heat: number;
-  recettes: number;
-}
 
-export function resolveRacket(business: Business, approach: RacketApproach, bias = 1): RacketResult {
-  const successChance = 0.6 + (approach === "discrete" ? 0.06 : -0.04);
-  const success = biasedChance(successChance, bias);
-  const recettes = success ? randInt(1200, approach === "musclee" ? 9000 : 4500) : 0;
-  const respect = success ? randInt(1, approach === "musclee" ? 6 : 3) : -randInt(0, 2);
-  const heat = approach === "musclee" ? randInt(2, 7) : randInt(0, 2);
-  const narrative = `${business.label} — ${success ? `Versement obtenu de ${business.pool}.` : `Refus catégorique de ${business.pool}.`}`;
-  return { success, narrative, respect, heat, recettes };
-}
 
 // ============================================================================
 // Chaos — issue spéciale des choix "risqués" (cartes truquées, soirée qui dérape).

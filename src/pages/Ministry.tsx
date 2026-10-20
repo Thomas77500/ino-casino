@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { LockedGame } from "../components/games/GameTile";
 import { motion } from "framer-motion";
+import { OptionList } from "../components/games/ArcGame";
+import { biasedChance, randInt } from "../lib/rng";
+import { adaptEvent, buildEventOptions, seasonInterludes, factionReactions, clamp, type Ctx, type Effect, type Interlude, type RpOption, type RpState } from "../lib/rpEngine";
 import { useCasinoStore } from "../store/casinoStore";
 import { useToastStore } from "../store/toastStore";
 import { useGameStatusStore } from "../store/gameStatusStore";
@@ -29,6 +32,24 @@ import {
   resolvePresidentialBid,
 } from "../lib/ministryEngine";
 
+const KEYS = { a: "popularity", r: "-", m: "treasury" };
+const RP_FACTIONS = POLITICAL_BLOCS.map((f) => ({ id: f.id, label: f.label, short: f.short, lean: f.fiscalLean }));
+const RP_CTX: Ctx = {
+  factions: RP_FACTIONS,
+  mUnit: 5,
+  mFloor: -1e9, // treasury is a score here, not cash — never blocks a choice
+  lexicon: {
+    delegate: "ton directeur de cabinet",
+    gamble: "Improviser une annonce choc au 20h",
+    gambleWin: "Ton annonce surprise fait l'ouverture de tous les JT. Coup de maître.",
+    gambleLose: "Ton annonce improvisée tourne au fiasco en direct. Les chaînes info s'en régalent.",
+  },
+  chaos: () => {
+    const c = resolveChaos();
+    return { a: c.popularity, r: 0, m: c.treasury, factions: factionReactions(RP_FACTIONS, { a: c.popularity, r: 0 }), text: c.outcome, success: c.good, chaos: true };
+  },
+};
+
 function average(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
@@ -42,7 +63,7 @@ const WINNING_INDEX = 50;
 const SPIN_DURATION = 5.5;
 
 type View = "mandat" | "palmares" | "salon";
-type Phase = "idle" | "spinning" | "votes" | "happening" | "event" | "farewell" | "recap";
+type Phase = "idle" | "spinning" | "votes" | "happening" | "interlude" | "event" | "farewell" | "recap";
 
 interface MandateState {
   ministry: MinistryDef;
@@ -56,6 +77,8 @@ interface MandateState {
   bills: Bill[];
   billIndex: number;
   usedHappeningIds: string[];
+  flags: string[];
+  interludes: Interlude[];
 }
 
 interface RoundResult {
@@ -89,6 +112,10 @@ function ReelTile({ ministry }: { ministry: MinistryDef }) {
       <p className="text-[11px] font-semibold leading-tight text-white">{ministry.label}</p>
     </div>
   );
+}
+
+function rpView(st: { popularity: number; treasury: number; blocConfidence: Record<string, number>; flags: string[] }): RpState {
+  return { a: st.popularity, r: 0, m: st.treasury, factions: st.blocConfidence, flags: st.flags, journal: [], stanceCounts: {} };
 }
 
 export function Ministry() {
@@ -165,6 +192,8 @@ export function Ministry() {
       events: drawMandateEvents(startYear), startYear,
       bills: billsForYear(ministry), billIndex: 0,
       usedHappeningIds: [],
+      flags: [],
+      interludes: [],
     });
     setPhase("votes");
   }
@@ -207,10 +236,10 @@ export function Ministry() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  function voteBill(choice: VoteChoice | "bribe") {
+  function voteBill(choice: VoteChoice | "bribe" | "abstain" | "amend") {
     if (!mandate || resolving) return;
     const bill = mandate.bills[mandate.billIndex];
-    const vote: VoteChoice = choice === "bribe" ? bill.bribeOffer!.direction : choice;
+    const vote: VoteChoice = choice === "bribe" ? bill.bribeOffer!.direction : choice === "abstain" ? "contre" : choice === "amend" ? "pour" : choice;
     let extraText = "";
     let extraPenalty = 0;
 
@@ -225,12 +254,29 @@ export function Ministry() {
       }
     }
 
-    const result = resolveVote(bill, vote, winBias);
+    let result = resolveVote(bill, vote, winBias);
+    // Neither yes nor no: abstaining dodges the fallout but looks weak; amending is a gamble on
+    // softening the text (half the treasury effect, a small popularity bonus) that can backfire.
+    let confSoftener = 0;
+    if (choice === "abstain") {
+      result = { ...result, popularity: -randInt(0, 2), narrative: `🤐 Tu t'abstiens. ${result.narrative}` };
+      confSoftener = -1;
+    } else if (choice === "amend") {
+      if (biasedChance(0.55, winBias)) {
+        result = { ...result, popularity: result.popularity + 2, treasury: Math.round(result.treasury / 2), narrative: `✍️ Ton amendement passe en commission. ${result.narrative}` };
+        confSoftener = 1;
+      } else {
+        result = { ...result, popularity: -3, treasury: 0, narrative: "✍️ Ton amendement est retoqué en commission — tu passes pour un technocrate." };
+        confSoftener = -1;
+      }
+    }
     let newPopularity = Math.max(0, Math.min(100, mandate.popularity + result.popularity - extraPenalty));
     const newTreasury = mandate.treasury + result.treasury;
     const debtUpdate = applyVoteDebtImpact(mandate.debtGdp, bill, result.passed);
     if (debtUpdate.narrative) extraText += `\n\n${debtUpdate.narrative}`;
-    const newBlocConfidence = applyBlocConfidence(mandate.blocConfidence, bill, vote);
+    const newBlocConfidence = confSoftener !== 0
+      ? Object.fromEntries(Object.entries(mandate.blocConfidence).map(([id, v]) => [id, clamp(v + confSoftener, 0, 100)]))
+      : applyBlocConfidence(mandate.blocConfidence, bill, vote);
 
     let censured = newPopularity <= 0;
     if (!censured && (newPopularity <= 30 || shouldTriggerSurpriseCensure())) {
@@ -268,10 +314,11 @@ export function Ministry() {
         setResolving(false);
         if (triggerHappening) setPhase("happening");
       } else {
-        setMandate(carried);
+        const interludes = seasonInterludes(rpView(carried), RP_CTX);
+        setMandate({ ...carried, interludes });
         setLastOutcome(null);
         setResolving(false);
-        setPhase("event");
+        setPhase(interludes.length > 0 ? "interlude" : "event");
       }
     }, extraText.includes("Motion de censure") ? 3200 : 1100);
   }
@@ -287,35 +334,26 @@ export function Ministry() {
 
   // Same shape as choose() below (two choices, optional chaos, censure check if popularity dips
   // low enough) but always hands back to "votes" instead of advancing the mandate's turn.
-  function resolveHappening(choice: "a" | "b") {
-    if (!mandate || !happening || resolving) return;
-    const picked = choice === "a" ? happening.choices[0] : happening.choices[1];
-    let popDelta = 0;
-    let treasuryDelta = 0;
-    let outcomeText = "";
 
-    if (picked.chaos) {
-      const r = resolveChaos();
-      popDelta = r.popularity;
-      treasuryDelta = r.treasury;
-      outcomeText = r.outcome;
+  // Every narrative decision goes through here. Heat from the shared RP options (bluffs gone
+  // wrong, botched delegations) has no axis of its own in this arc, so it costs popularity instead.
+  function resolveRp(eff: Effect, kind: "event" | "happening" | "interlude") {
+    if (!mandate || resolving) return;
+    let newPopularity = clamp(mandate.popularity + eff.a - Math.round(eff.r / 2), 0, 100);
+    const newTreasury = mandate.treasury + eff.m;
+    const debtUpdate = applyEventDebtImpact(mandate.debtGdp, eff.m);
+    let outcomeText = eff.text + (debtUpdate.narrative ? `\n\n${debtUpdate.narrative}` : "");
+    const conf = { ...mandate.blocConfidence };
+    for (const [id, d] of Object.entries(eff.factions)) conf[id] = clamp((conf[id] ?? 50) + d, 0, 100);
+    let flags = mandate.flags.filter((f) => !(eff.consume ?? []).includes(f));
+    if (eff.flags) flags = [...flags, ...eff.flags];
+    if (eff.chaos) {
       setChaosActive(true);
       setTimeout(() => setChaosActive(false), 2400);
-    } else {
-      popDelta = picked.popularity;
-      treasuryDelta = picked.treasury;
-      outcomeText = picked.outcome;
     }
-
-    let newPopularity = Math.max(0, Math.min(100, mandate.popularity + popDelta));
-    const newTreasury = mandate.treasury + treasuryDelta;
-    const debtUpdate = applyEventDebtImpact(mandate.debtGdp, treasuryDelta);
-    if (debtUpdate.narrative) outcomeText += `\n\n${debtUpdate.narrative}`;
     let censured = newPopularity <= 0;
-
     if (!censured && newPopularity <= 30) {
-      const avgConfidence = average(Object.values(mandate.blocConfidence));
-      const cm = resolveCensureMotion(newPopularity, winBias, avgConfidence);
+      const cm = resolveCensureMotion(newPopularity, winBias, average(Object.values(conf)));
       outcomeText += `\n\n${cm.narrative}`;
       if (cm.survived) {
         newPopularity = Math.max(0, newPopularity - cm.popularityPenalty);
@@ -329,97 +367,47 @@ export function Ministry() {
     setLastOutcome(outcomeText);
 
     setTimeout(() => {
-      setHappening(null);
-      if (censured) {
-        finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, censured), censured);
-      } else {
-        setMandate({ ...mandate, popularity: newPopularity, treasury: newTreasury, debtGdp: debtUpdate.debtGdp });
-        setLastOutcome(null);
-        setResolving(false);
-        setPhase("votes");
-      }
-    }, outcomeText.includes("Motion de censure") ? 3200 : 1600);
-  }
-
-  function choose(choice: "a" | "b" | "bribe") {
-    if (!mandate || resolving) return;
-    const event = mandate.events[mandate.turn];
-    let popDelta = 0;
-    let treasuryDelta = 0;
-    let outcomeText = "";
-
-    if (choice === "bribe") {
-      const cost = bribeCost(mandate.ministry);
-      if (credits < cost) {
-        push({ kind: "info", title: "Crédits insuffisants pour soudoyer" });
-        return;
-      }
-      placeBet(cost);
-      const r = resolveBribe(winBias);
-      popDelta = r.popularity;
-      treasuryDelta = r.treasury;
-      outcomeText = r.outcome;
-      push({ kind: r.success ? "success" : "info", title: r.success ? "Soudoiement réussi" : "Soudoiement éventé" });
-    } else {
-      const picked = choice === "a" ? event.choices[0] : event.choices[1];
-      if (picked.chaos) {
-        const r = resolveChaos();
-        popDelta = r.popularity;
-        treasuryDelta = r.treasury;
-        outcomeText = r.outcome;
-        setChaosActive(true);
-        setTimeout(() => setChaosActive(false), 2400);
-      } else {
-        popDelta = picked.popularity;
-        treasuryDelta = picked.treasury;
-        outcomeText = picked.outcome;
-      }
-    }
-
-    let newPopularity = Math.max(0, Math.min(100, mandate.popularity + popDelta));
-    const newTreasury = mandate.treasury + treasuryDelta;
-    const debtUpdate = applyEventDebtImpact(mandate.debtGdp, treasuryDelta);
-    if (debtUpdate.narrative) outcomeText += `\n\n${debtUpdate.narrative}`;
-    let censured = newPopularity <= 0;
-    const nextTurn = mandate.turn + 1;
-
-    // A motion de censure is only ever tabled once popularity has already survived the choice
-    // above (a hard zero is a total collapse, no vote needed) — the lower it is, the more likely
-    // it fails.
-    if (!censured && newPopularity <= 30) {
-      const avgConfidence = average(Object.values(mandate.blocConfidence));
-      const cm = resolveCensureMotion(newPopularity, winBias, avgConfidence);
-      outcomeText += `\n\n${cm.narrative}`;
-      if (cm.survived) {
-        newPopularity = Math.max(0, newPopularity - cm.popularityPenalty);
-        censured = newPopularity <= 0;
-      } else {
-        censured = true;
-      }
-    }
-
-    setResolving(true);
-    setLastOutcome(outcomeText);
-
-    setTimeout(() => {
+      setLastOutcome(null);
+      setResolving(false);
       if (censured) {
         finalizeRound(mandate.ministry, newPopularity, newTreasury, computeOutcome(mandate.ministry, newPopularity, newTreasury, true), true);
-      } else if (nextTurn >= MANDATE_LENGTH) {
-        setMandate({ ...mandate, turn: nextTurn, popularity: newPopularity, treasury: newTreasury, debtGdp: debtUpdate.debtGdp });
-        setLastOutcome(null);
-        setResolving(false);
-        setPhase("farewell");
-      } else {
-        setMandate({
-          ...mandate, turn: nextTurn, popularity: newPopularity, treasury: newTreasury, debtGdp: debtUpdate.debtGdp,
-          bills: billsForYear(mandate.ministry), billIndex: 0,
-        });
-        setLastOutcome(null);
-        setResolving(false);
+        return;
+      }
+      const carried = { ...mandate, popularity: newPopularity, treasury: newTreasury, debtGdp: debtUpdate.debtGdp, blocConfidence: conf, flags };
+      if (kind === "happening") {
+        setHappening(null);
+        setMandate(carried);
         setPhase("votes");
+      } else if (kind === "interlude") {
+        const rest = carried.interludes.slice(1);
+        setMandate({ ...carried, interludes: rest });
+        setPhase(rest.length > 0 ? "interlude" : "event");
+      } else {
+        const nextTurn = mandate.turn + 1;
+        if (nextTurn >= MANDATE_LENGTH) {
+          setMandate({ ...carried, turn: nextTurn });
+          setPhase("farewell");
+        } else {
+          setMandate({ ...carried, turn: nextTurn, bills: billsForYear(mandate.ministry), billIndex: 0 });
+          setPhase("votes");
+        }
       }
     }, outcomeText.includes("Motion de censure") ? 3200 : 2000);
   }
+
+  function bribeEvent() {
+    if (!mandate || resolving) return;
+    const cost = bribeCost(mandate.ministry);
+    if (credits < cost) {
+      push({ kind: "info", title: "Crédits insuffisants pour soudoyer" });
+      return;
+    }
+    placeBet(cost);
+    const r = resolveBribe(winBias);
+    push({ kind: r.success ? "success" : "info", title: r.success ? "Soudoiement réussi" : "Soudoiement éventé" });
+    resolveRp({ a: r.popularity, r: 0, m: r.treasury, factions: {}, text: r.outcome, success: r.success }, "event");
+  }
+
 
   function endMandateQuietly() {
     if (!mandate) return;
@@ -507,7 +495,7 @@ export function Ministry() {
             </Card>
           )}
 
-          {(phase === "votes" || phase === "happening" || phase === "event" || phase === "farewell") && mandate && (
+          {(phase === "votes" || phase === "happening" || phase === "interlude" || phase === "event" || phase === "farewell") && mandate && (
             <div className="flex flex-col gap-4">
               <Card className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -593,12 +581,18 @@ export function Ministry() {
                     </div>
                   ) : (
                     <div className="mt-5 flex flex-col gap-2">
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-2 gap-2 sm:flex">
                         <Button variant="secondary" onClick={() => voteBill("pour")} disabled={resolving} className="flex-1">
                           Pour
                         </Button>
                         <Button variant="secondary" onClick={() => voteBill("contre")} disabled={resolving} className="flex-1">
                           Contre
+                        </Button>
+                        <Button variant="secondary" onClick={() => voteBill("abstain")} disabled={resolving} className="flex-1">
+                          🤐 Abstention
+                        </Button>
+                        <Button variant="secondary" onClick={() => voteBill("amend")} disabled={resolving} className="flex-1">
+                          ✍️ Amender <span className="ml-1 text-[10px] text-gold-300">55%</span>
                         </Button>
                         {currentBill.bribeOffer && (
                           <Button variant="gold" onClick={() => voteBill("bribe")} disabled={resolving} className="flex-1">
@@ -627,14 +621,24 @@ export function Ministry() {
                       {lastOutcome}
                     </motion.div>
                   ) : (
-                    <div className="mt-5 flex flex-col gap-2">
-                      <Button variant="secondary" onClick={() => resolveHappening("a")} disabled={resolving} className="w-full">
-                        {happening.choices[0].label}
-                      </Button>
-                      <Button variant="secondary" onClick={() => resolveHappening("b")} disabled={resolving} className="w-full">
-                        {happening.choices[1].label}
-                      </Button>
-                    </div>
+                    <OptionList options={buildEventOptions(adaptEvent(happening, KEYS), rpView(mandate), RP_CTX)} onPick={(o: RpOption) => resolveRp(o.resolve(), "happening")} disabled={resolving} />
+                  )}
+                </Card>
+              )}
+
+              {phase === "interlude" && mandate.interludes[0] && (
+                <Card className="border-gold-400/30 p-4 sm:p-6" glow>
+                  <Badge tone="gold">Conséquence</Badge>
+                  <h2 className="mt-3 font-display text-lg font-bold text-white">
+                    {mandate.interludes[0].emoji} {mandate.interludes[0].title}
+                  </h2>
+                  <p className="mt-2 text-sm text-ice-200/70">{mandate.interludes[0].description}</p>
+                  {lastOutcome !== null ? (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 whitespace-pre-line rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm text-ice-200/80">
+                      {lastOutcome}
+                    </motion.div>
+                  ) : (
+                    <OptionList options={mandate.interludes[0].options} onPick={(o: RpOption) => resolveRp(o.resolve(), "interlude")} disabled={resolving} />
                   )}
                 </Card>
               )}
@@ -652,17 +656,12 @@ export function Ministry() {
                       {lastOutcome}
                     </motion.div>
                   ) : (
-                    <div className="mt-5 flex flex-col gap-2">
-                      <Button variant="secondary" onClick={() => choose("a")} disabled={resolving} className="w-full">
-                        {event.choices[0].label}
-                      </Button>
-                      <Button variant="secondary" onClick={() => choose("b")} disabled={resolving} className="w-full">
-                        {event.choices[1].label}
-                      </Button>
-                      <Button variant="gold" onClick={() => choose("bribe")} disabled={resolving || credits < bribeCost(mandate.ministry)} className="w-full">
+                    <>
+                      <OptionList options={buildEventOptions(adaptEvent(event, KEYS), rpView(mandate), RP_CTX)} onPick={(o: RpOption) => resolveRp(o.resolve(), "event")} disabled={resolving} />
+                      <Button variant="gold" onClick={bribeEvent} disabled={resolving || credits < bribeCost(mandate.ministry)} className="mt-2 w-full">
                         💰 Soudoyer — {formatCredits(bribeCost(mandate.ministry))}
                       </Button>
-                    </div>
+                    </>
                   )}
                 </Card>
               )}

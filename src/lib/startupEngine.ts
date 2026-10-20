@@ -328,11 +328,9 @@ export function shouldTriggerSurpriseAudit(): boolean {
 }
 
 // ============================================================================
-// Factions — la confiance de chaque camp autour de la startup (0-100, départ à 50) envers ta prise
-// de risque. Chaque pitch déplace la confiance de tous les camps à la fois selon leur affinité pour
-// l'audace ou la prudence, et la confiance moyenne pèse ensuite dans les chances de survie d'un
-// audit — une startup peut avoir un hype personnel énorme mais couler quand même si tous les camps
-// se méfient d'elle.
+// Factions — 5 camps (confiance 0-100, départ à 50). `lean` dit comment chaque camp juge la prise
+// de risque ; chaque posture a en plus sa propre affinité par camp (voir la page de l'arc), et la
+// confiance moyenne pèse dans la survie aux descentes/audits. Logique commune : lib/rpEngine.ts.
 // ============================================================================
 
 export interface Faction {
@@ -350,17 +348,6 @@ export const FACTIONS: Faction[] = [
   { id: "premiers-clients", label: "Les Premiers Clients", short: "Clients", lean: -0.3 },
 ];
 
-export const START_FACTION_CONFIDENCE = 50;
-
-export function applyFactionConfidence(confidence: Record<string, number>, approach: PitchApproach): Record<string, number> {
-  const next = { ...confidence };
-  const sign = approach === "audacieuse" ? 1 : -1;
-  for (const f of FACTIONS) {
-    const delta = Math.round(f.lean * sign * randInt(1, 4));
-    next[f.id] = Math.max(0, Math.min(100, (next[f.id] ?? START_FACTION_CONFIDENCE) + delta));
-  }
-  return next;
-}
 
 // ============================================================================
 // Rendez-vous investisseurs — 12 à 18 par tour de table, chacun ciblant un profil tiré au hasard.
@@ -392,8 +379,6 @@ export const INVESTOR_PROFILES: InvestorProfile[] = [
   { id: "media-invest", label: "Groupe Médiatique en Diversification", pool: "un groupe média" },
 ];
 
-export type PitchApproach = "prudente" | "audacieuse";
-
 export function generatePitch(): InvestorProfile {
   return pick(INVESTOR_PROFILES);
 }
@@ -403,25 +388,7 @@ export function pitchesForRound(): InvestorProfile[] {
   return Array.from({ length: count }, generatePitch);
 }
 
-export interface PitchResult {
-  success: boolean;
-  raised: number;
-  narrative: string;
-  hype: number;
-  scrutiny: number;
-  funding: number;
-}
 
-export function resolvePitch(investor: InvestorProfile, approach: PitchApproach, bias = 1): PitchResult {
-  const successChance = 0.55 + (approach === "prudente" ? 0.08 : -0.05);
-  const success = biasedChance(successChance, bias);
-  const raised = success ? randInt(70000, approach === "audacieuse" ? 1300000 : 550000) : 0;
-  const funding = success ? raised : 0;
-  const hype = success ? randInt(1, approach === "audacieuse" ? 6 : 3) : -randInt(0, 2);
-  const scrutiny = approach === "audacieuse" ? randInt(2, 7) : randInt(0, 2);
-  const narrative = `${investor.label} — ${success ? `${(raised / 1000).toFixed(0)}k€ levés auprès ${investor.pool}.` : `Rendez-vous infructueux avec ${investor.pool}.`}`;
-  return { success, raised, narrative, hype, scrutiny, funding };
-}
 
 // ============================================================================
 // Chaos — issue spéciale des choix "risqués" (nuit blanche, afterwork qui dérape).

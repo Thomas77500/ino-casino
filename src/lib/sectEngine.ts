@@ -348,11 +348,9 @@ export function shouldTriggerSurpriseRaid(): boolean {
 }
 
 // ============================================================================
-// Factions — la confiance de chaque camp autour du mouvement (0-100, départ à 50) envers la
-// manière dont tu recrutes. Chaque campagne déplace la confiance de tous les camps à la fois selon
-// leur affinité pour l'agressivité ou la douceur, et la confiance moyenne pèse ensuite dans les
-// chances de survie d'une descente — un mouvement peut être personnellement influent mais tomber
-// quand même si tous les camps se méfient de lui.
+// Factions — 5 camps (confiance 0-100, départ à 50). `lean` dit comment chaque camp juge la prise
+// de risque ; chaque posture a en plus sa propre affinité par camp (voir la page de l'arc), et la
+// confiance moyenne pèse dans la survie aux descentes/audits. Logique commune : lib/rpEngine.ts.
 // ============================================================================
 
 export interface Faction {
@@ -370,17 +368,6 @@ export const FACTIONS: Faction[] = [
   { id: "mecenes", label: "Les Mécènes du Mouvement", short: "Mécènes", lean: 0.5 },
 ];
 
-export const START_FACTION_CONFIDENCE = 50;
-
-export function applyFactionConfidence(confidence: Record<string, number>, approach: RecruitApproach): Record<string, number> {
-  const next = { ...confidence };
-  const sign = approach === "agressive" ? 1 : -1;
-  for (const f of FACTIONS) {
-    const delta = Math.round(f.lean * sign * randInt(1, 4));
-    next[f.id] = Math.max(0, Math.min(100, (next[f.id] ?? START_FACTION_CONFIDENCE) + delta));
-  }
-  return next;
-}
 
 // ============================================================================
 // Campagnes de recrutement — 12 à 18 par saison, chacune ciblant un public tiré au hasard.
@@ -412,8 +399,6 @@ export const RECRUIT_TARGETS: RecruitTarget[] = [
   { id: "librairie", label: "Rayon spiritualité d'une grande librairie", pool: "des lecteurs curieux" },
 ];
 
-export type RecruitApproach = "douce" | "agressive";
-
 export function generateDrive(): RecruitTarget {
   return pick(RECRUIT_TARGETS);
 }
@@ -423,25 +408,7 @@ export function drivesForSeason(): RecruitTarget[] {
   return Array.from({ length: count }, generateDrive);
 }
 
-export interface DriveResult {
-  success: boolean;
-  recruited: number;
-  narrative: string;
-  influence: number;
-  suspicion: number;
-  dons: number;
-}
 
-export function resolveDrive(target: RecruitTarget, approach: RecruitApproach, bias = 1): DriveResult {
-  const successChance = 0.55 + (approach === "douce" ? 0.08 : -0.05);
-  const success = biasedChance(successChance, bias);
-  const recruited = success ? randInt(3, approach === "agressive" ? 16 : 10) : randInt(0, 2);
-  const dons = success ? recruited * randInt(220, 550) : randInt(0, 100);
-  const influence = success ? randInt(1, approach === "agressive" ? 6 : 3) : -randInt(0, 2);
-  const suspicion = approach === "agressive" ? randInt(2, 7) : randInt(0, 2);
-  const narrative = `${target.label} — ${success ? `${recruited} nouveaux adeptes parmi ${target.pool}.` : `Approche infructueuse auprès ${target.pool}.`}`;
-  return { success, recruited, narrative, influence, suspicion, dons };
-}
 
 // ============================================================================
 // Chaos — issue spéciale des choix "risqués" (potion, jeûne extrême, promesses folles). Grosse
