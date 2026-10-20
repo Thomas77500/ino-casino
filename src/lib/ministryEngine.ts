@@ -1,3 +1,4 @@
+import { UNLOCKS } from "./unlocks";
 import { biasedWeightedPick, biasedChance, chance, randInt, pick, type Weighted } from "./rng";
 
 // ============================================================================
@@ -5,7 +6,7 @@ import { biasedWeightedPick, biasedChance, chance, randInt, pick, type Weighted 
 // Bourse (voir stockEngine.ts) : un cap de gains cumulés, pas de vraie monnaie en jeu.
 // ============================================================================
 
-export const UNLOCK_TOTAL_WON = 25_000_000;
+export const UNLOCK_TOTAL_WON = UNLOCKS.ministry;
 export const ENTRY_COST = 50_000;
 
 export interface Ministry {

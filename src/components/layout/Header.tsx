@@ -28,6 +28,11 @@ export function Header({ active, onNavigate, onMenuClick }: { active: AppTab; on
   const claimDaily = useCasinoStore((s) => s.claimDaily);
   const push = useToastStore((s) => s.push);
   const visibleTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+  // Only the main tabs fit on one line next to the balance pills; the rest go in "Plus".
+  const primaryTabs = visibleTabs.slice(0, 5);
+  const moreTabs = visibleTabs.slice(5);
+  const moreActive = moreTabs.some((t) => t.id === active);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // Floating "+N" over the balance whenever it goes up, wherever the win came from.
   const prevCredits = useRef(credits);
@@ -63,22 +68,70 @@ export function Header({ active, onNavigate, onMenuClick }: { active: AppTab; on
           <span className="font-display text-lg font-bold tracking-tight text-white hidden sm:inline">Ino Casino</span>
         </button>
 
-        <nav className="hidden lg:flex items-center gap-1 flex-1 overflow-x-auto">
-          {visibleTabs.map((t) => (
+        <nav className="hidden flex-1 items-center gap-1 lg:flex">
+          {primaryTabs.map((t) => (
             <button
               key={t.id}
               onClick={() => onNavigate(t.id)}
               className={cn(
-                "relative px-3 py-2 text-sm font-medium rounded-lg transition-colors",
+                "relative whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                 active === t.id ? "text-white" : "text-ice-200/60 hover:text-white"
               )}
             >
               {active === t.id && (
-                <motion.span layoutId="nav-pill" className="absolute inset-0 rounded-lg bg-white/[0.07]" transition={{ type: "spring", stiffness: 400, damping: 30 }} />
+                <motion.span layoutId="nav-pill" className="absolute inset-0 rounded-lg bg-white/[0.08] shadow-inner-glass" transition={{ type: "spring", stiffness: 400, damping: 30 }} />
               )}
               <span className="relative">{t.label}</span>
             </button>
           ))}
+          {moreTabs.length > 0 && (
+            <div className="relative">
+              <button
+                onClick={() => setMoreOpen((o) => !o)}
+                className={cn(
+                  "relative flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  moreActive || moreOpen ? "text-white" : "text-ice-200/60 hover:text-white"
+                )}
+              >
+                {moreActive && (
+                  <motion.span layoutId="nav-pill" className="absolute inset-0 rounded-lg bg-white/[0.08] shadow-inner-glass" transition={{ type: "spring", stiffness: 400, damping: 30 }} />
+                )}
+                <span className="relative">{moreActive ? moreTabs.find((t) => t.id === active)!.label : "Plus"}</span>
+                <motion.span className="relative text-[10px]" animate={{ rotate: moreOpen ? 180 : 0 }}>▾</motion.span>
+              </button>
+              <AnimatePresence>
+                {moreOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-white/10 bg-ink-900/95 p-1.5 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.8)] backdrop-blur-xl"
+                    >
+                      {moreTabs.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => {
+                            setMoreOpen(false);
+                            onNavigate(t.id);
+                          }}
+                          className={cn(
+                            "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                            active === t.id ? "bg-electric-500/15 text-white" : "text-ice-200/70 hover:bg-white/5 hover:text-white"
+                          )}
+                        >
+                          <t.icon className="h-4 w-4 text-electric-400" />
+                          {t.label}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </nav>
 
         <div className="flex flex-1 lg:flex-none items-center justify-end gap-2 sm:gap-3">

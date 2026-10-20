@@ -1,9 +1,10 @@
+import { UNLOCKS } from "./unlocks";
 export const STARTING_PRICE = 100;
 export const TICK_MS = 500;
 export const HISTORY_LENGTH = 80;
 const VOLATILITY = 0.006; // ~0.6% standard deviation per tick
 
-export const UNLOCK_TOTAL_WON = 100_000_000;
+export const UNLOCK_TOTAL_WON = UNLOCKS.bourse;
 
 export type RoundDuration = 5 | 15 | 30;
 

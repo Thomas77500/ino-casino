@@ -1,3 +1,4 @@
+import { UNLOCKS } from "./unlocks";
 import { biasedWeightedPick, biasedChance, chance, randInt, pick, type Weighted } from "./rng";
 
 // ============================================================================
@@ -5,7 +6,7 @@ import { biasedWeightedPick, biasedChance, chance, randInt, pick, type Weighted 
 // Ministère/la Bourse : un cap de gains cumulés, pas de vraie monnaie en jeu.
 // ============================================================================
 
-export const UNLOCK_TOTAL_WON = 35_000_000;
+export const UNLOCK_TOTAL_WON = UNLOCKS.club;
 export const ENTRY_COST = 50_000;
 
 export interface Club {

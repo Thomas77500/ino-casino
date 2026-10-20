@@ -14,6 +14,7 @@ import { maxBetFor } from "../lib/betting";
 import { xpForPayout } from "../lib/xp";
 import { GRID_SIZE, ALARM_COUNTS, RISK_LABEL, buildHeistMultiplier, safeTileCount, drawGrid, type RiskLevel } from "../lib/heistEngine";
 import { tierFromMultiplier, type WinTier } from "../lib/winTiers";
+import { playSound } from "../lib/sounds";
 
 type Phase = "idle" | "playing" | "busted" | "extracted";
 
@@ -63,6 +64,7 @@ export function Braquage() {
     setRevealed(nextRevealed);
 
     if (grid[index]) {
+      playSound("boom");
       setBustedIndex(index);
       setPhase("busted");
       recordRound({ game: "Braquage", label: RISK_LABEL[risk], bet, payout: 0, tier: "none" });
@@ -71,6 +73,7 @@ export function Braquage() {
     }
 
     const nextPicks = picks + 1;
+    playSound("chip");
     setPicks(nextPicks);
     if (nextPicks >= safeTileCount(risk)) {
       extract(nextPicks);
@@ -116,36 +119,78 @@ export function Braquage() {
       </div>
 
       <Card className="p-4 sm:p-8" glow>
-        <div className="mx-auto grid max-w-md grid-cols-5 gap-1.5 rounded-2xl border border-white/10 bg-ink-950/60 p-3">
-          {Array.from({ length: GRID_SIZE }, (_, i) => {
-            const isRevealed = revealed[i];
-            const isAlarm = isRevealed && grid[i];
-            const isBustedTile = bustedIndex === i;
-            return (
-              <button
-                key={i}
-                onClick={() => pick(i)}
-                disabled={phase !== "playing" || isRevealed}
-                className={cn(
-                  "relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border text-lg transition-all",
-                  isRevealed
-                    ? isAlarm
-                      ? "border-red-500 bg-red-500/20"
-                      : "border-emerald-500/40 bg-emerald-500/10"
-                    : "border-white/10 bg-gradient-to-br from-electric-600/30 to-electric-800/30 hover:from-electric-500/40 hover:to-electric-700/40"
-                )}
-              >
-                {isRevealed ? (
-                  <motion.span initial={{ scale: 0 }} animate={{ scale: isBustedTile ? [1, 1.4, 1] : 1 }} transition={{ type: "spring", stiffness: 300, damping: 16 }}>
-                    {isAlarm ? "🚨" : LOOT_GLYPHS[i % LOOT_GLYPHS.length]}
-                  </motion.span>
-                ) : (
-                  <span className="text-white/20">🔒</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <motion.div
+          className="relative mx-auto max-w-md overflow-hidden rounded-2xl border-2 border-zinc-600/60 bg-[linear-gradient(180deg,#1c1f26,#0b0d12)] p-3 shadow-[inset_0_0_40px_rgba(0,0,0,0.8)]"
+          animate={phase === "busted" ? { x: [0, -12, 12, -8, 8, -3, 0] } : { x: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          {/* siren lights once the alarm trips */}
+          {phase === "busted" && (
+            <motion.div
+              className="pointer-events-none absolute inset-0 z-20 mix-blend-screen"
+              initial={{ opacity: 1 }}
+              animate={{
+                backgroundColor: ["rgba(239,68,68,0.4)", "rgba(59,130,246,0.35)", "rgba(239,68,68,0.4)", "rgba(59,130,246,0.35)", "rgba(239,68,68,0.4)"],
+                opacity: [1, 1, 1, 1, 0],
+              }}
+              transition={{ duration: 2.2 }}
+            />
+          )}
+          <div className="mb-2 flex items-center justify-between px-1 text-[10px] font-bold uppercase tracking-[0.25em] text-zinc-500">
+            <span>Salle des coffres</span>
+            <span className={phase === "busted" ? "text-red-400" : "text-emerald-400/80"}>{phase === "busted" ? "● Alarme" : "● Silence"}</span>
+          </div>
+          <div className="grid grid-cols-5 gap-1.5" style={{ perspective: 700 }}>
+            {Array.from({ length: GRID_SIZE }, (_, i) => {
+              const isRevealed = revealed[i];
+              const isAlarm = grid[i];
+              const isBustedTile = bustedIndex === i;
+              const showContent = isRevealed || (phase !== "playing" && phase !== "idle");
+              return (
+                <button
+                  key={i}
+                  onClick={() => pick(i)}
+                  disabled={phase !== "playing" || isRevealed}
+                  className="group relative aspect-square overflow-hidden rounded-md"
+                >
+                  {/* box interior */}
+                  <div
+                    className={cn(
+                      "absolute inset-0 grid place-items-center rounded-md border text-xl",
+                      showContent && isAlarm ? "border-red-500/70 bg-[radial-gradient(circle,rgba(239,68,68,0.45),rgba(60,0,0,0.9))]" : "border-gold-400/40 bg-[radial-gradient(circle,rgba(246,191,75,0.35),rgba(30,20,0,0.95))]",
+                      !isRevealed && phase !== "playing" && "opacity-45"
+                    )}
+                  >
+                    {showContent && (
+                      <motion.span
+                        initial={{ scale: 0.3, y: 6 }}
+                        animate={{ scale: isBustedTile ? [1, 1.5, 1.2] : 1, y: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 14, delay: isRevealed ? 0.15 : 0.02 * i }}
+                        className={cn("drop-shadow-[0_0_8px_rgba(246,191,75,0.8)]", isAlarm && "drop-shadow-[0_0_10px_rgba(239,68,68,0.9)]")}
+                      >
+                        {isAlarm ? "🚨" : LOOT_GLYPHS[i % LOOT_GLYPHS.length]}
+                      </motion.span>
+                    )}
+                  </div>
+                  {/* door swings open on its hinge */}
+                  <motion.div
+                    className="absolute inset-0 origin-left rounded-md border border-zinc-400/40 bg-[linear-gradient(135deg,#a1a1aa_0%,#52525b_45%,#71717a_55%,#3f3f46_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]"
+                    style={{ backfaceVisibility: "hidden" }}
+                    animate={showContent ? { rotateY: -110, opacity: isRevealed ? 1 : 0 } : { rotateY: 0, opacity: 1 }}
+                    transition={{ duration: isRevealed ? 0.45 : 0.3, ease: [0.3, 0.7, 0.3, 1], delay: isRevealed ? 0 : 0.015 * i }}
+                  >
+                    <div className="absolute inset-[3px] rounded-[4px] border border-black/30" />
+                    <span className="absolute left-1 top-0.5 font-mono text-[8px] font-bold text-zinc-800/80">{String(i + 1).padStart(2, "0")}</span>
+                    <span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-zinc-800/60 bg-zinc-800/80 shadow-[inset_0_1px_2px_rgba(0,0,0,0.8)] transition-transform group-hover:rotate-90">
+                      <span className="absolute left-1/2 top-1/2 h-1.5 w-0.5 -translate-x-1/2 -translate-y-1/2 bg-zinc-400" />
+                    </span>
+                    {phase === "playing" && <span className="absolute inset-0 rounded-md bg-gold-400/0 transition-colors group-hover:bg-gold-400/15" />}
+                  </motion.div>
+                </button>
+              );
+            })}
+          </div>
+        </motion.div>
 
         <div className="mt-6 flex flex-col gap-4">
           {phase === "idle" ? (
@@ -174,9 +219,17 @@ export function Braquage() {
             </>
           ) : phase === "playing" ? (
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-ice-200/50">Multiplicateur actuel</p>
-                <p className="font-display text-2xl font-bold text-gold-400">x{multiplier}</p>
+              <div className="flex gap-6">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-ice-200/50">Multiplicateur actuel</p>
+                  <motion.p key={picks} initial={{ scale: 1.4 }} animate={{ scale: 1 }} className="font-display text-2xl font-bold text-gold-400">x{multiplier}</motion.p>
+                </div>
+                {picks < safeTileCount(risk) && (
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-ice-200/50">Coffre suivant</p>
+                    <p className="font-display text-2xl font-bold text-ice-200/70">x{buildHeistMultiplier(risk, picks + 1)}</p>
+                  </div>
+                )}
               </div>
               <Button variant="gold" onClick={() => extract()} disabled={picks === 0}>
                 Extraire {picks > 0 && `(${formatCredits(Math.round(bet * multiplier))})`}

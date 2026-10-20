@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { LockedGame } from "../components/games/GameTile";
 import { motion } from "framer-motion";
 import { useCasinoStore } from "../store/casinoStore";
 import { useToastStore } from "../store/toastStore";
@@ -12,7 +13,7 @@ import { ProgressBar } from "../components/ui/ProgressBar";
 import { StatTile } from "../components/ui/StatTile";
 import { RoomChat } from "../components/ui/RoomChat";
 import { WinCelebration } from "../components/ui/WinCelebration";
-import { IconCultEye, IconLock } from "../components/icons";
+import { IconCultEye } from "../components/icons";
 import { formatCredits, cn } from "../lib/format";
 import { xpForPayout } from "../lib/xp";
 import { tierFromMultiplier, type WinTier } from "../lib/winTiers";
@@ -407,17 +408,7 @@ export function Sect() {
 
   if (!unlocked) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <IconLock className="mx-auto mb-4 h-10 w-10 text-ice-200/40" />
-        <h1 className="font-display text-2xl font-bold text-white">Gourou verrouillé</h1>
-        <p className="mt-2 text-sm text-ice-200/60">
-          Débloque ce jeu en cumulant {formatCredits(UNLOCK_TOTAL_WON)} crédits gagnés au total.
-        </p>
-        <Card className="mt-6 p-4">
-          <p className="mb-2 text-xs text-ice-200/50">{formatCredits(totalWon)} / {formatCredits(UNLOCK_TOTAL_WON)}</p>
-          <ProgressBar value={totalWon} max={UNLOCK_TOTAL_WON} />
-        </Card>
-      </div>
+      <LockedGame gameId="sect" title="Gourou verrouillé" totalWon={totalWon} unlockAt={UNLOCK_TOTAL_WON} />
     );
   }
 

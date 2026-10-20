@@ -325,6 +325,7 @@ export function Roulette() {
                     spinTrigger={wheelTrigger}
                     spinning
                     size={140}
+                    durationMs={WHEEL_SPIN_MS}
                     centerLabel="Tirage..."
                     ringClassName="border-red-500/40 shadow-glow-red"
                   />

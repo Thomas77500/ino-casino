@@ -1,3 +1,4 @@
+import { UNLOCKS } from "./unlocks";
 import { pick, biasedWeightedPick, type Weighted } from "./rng";
 import { type CardRarity, RARITY_ORDER } from "./tcgCards";
 
@@ -8,7 +9,7 @@ import { type CardRarity, RARITY_ORDER } from "./tcgCards";
 // comme le Ministère/le Club : un cap de gains cumulés, pas de vraie monnaie en jeu.
 // ============================================================================
 
-export const UNLOCK_TOTAL_WON = 15_000_000;
+export const UNLOCK_TOTAL_WON = UNLOCKS.blackmarket;
 
 export interface BlackmarketItem {
   id: string;

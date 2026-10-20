@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LockedGame } from "../components/games/GameTile";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "../store/authStore";
 import { useCasinoStore } from "../store/casinoStore";
@@ -8,10 +9,9 @@ import { useBlackmarketStore, type Listing } from "../store/blackmarketStore";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
-import { ProgressBar } from "../components/ui/ProgressBar";
 import { NeonFrame } from "../components/ui/NeonFrame";
 import { RoomChat } from "../components/ui/RoomChat";
-import { IconMask, IconLock } from "../components/icons";
+import { IconMask } from "../components/icons";
 import { formatCredits, cn } from "../lib/format";
 import { pick } from "../lib/rng";
 import { RARITY_LABEL, RARITY_STYLE, type CardRarity } from "../lib/tcgCards";
@@ -114,17 +114,7 @@ export function Blackmarket() {
 
   if (!unlocked) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <IconLock className="mx-auto mb-4 h-10 w-10 text-ice-200/40" />
-        <h1 className="font-display text-2xl font-bold text-white">Marché Noir verrouillé</h1>
-        <p className="mt-2 text-sm text-ice-200/60">
-          Débloque ce réseau en cumulant {formatCredits(UNLOCK_TOTAL_WON)} crédits gagnés au total.
-        </p>
-        <Card className="mt-6 p-4">
-          <p className="mb-2 text-xs text-ice-200/50">{formatCredits(totalWon)} / {formatCredits(UNLOCK_TOTAL_WON)}</p>
-          <ProgressBar value={totalWon} max={UNLOCK_TOTAL_WON} />
-        </Card>
-      </div>
+      <LockedGame gameId="blackmarket" title="Marché Noir verrouillé" totalWon={totalWon} unlockAt={UNLOCK_TOTAL_WON} />
     );
   }
 
