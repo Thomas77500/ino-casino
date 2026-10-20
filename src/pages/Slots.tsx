@@ -12,10 +12,27 @@ import { Modal } from "../components/ui/Modal";
 import { formatCredits, cn } from "../lib/format";
 import { maxBetFor } from "../lib/betting";
 import { xpForPayout } from "../lib/xp";
-import { spinGrid, evaluateSpin, symbolGlyph, PAYLINES, type SpinResult } from "../lib/slotsEngine";
+import { spinGrid, evaluateSpin, symbolGlyph, PAYLINES, type SpinResult, type Grid } from "../lib/slotsEngine";
 import { SLOT_MACHINES, VOLATILITY_LABEL, type SlotMachineConfig } from "../lib/slotMachines";
 import type { WinTier } from "../lib/winTiers";
 import { playSound } from "../lib/sounds";
+
+type SlotSymbolList = SlotMachineConfig["symbols"];
+
+// Reel strip for one column: what's currently showing, a run of filler symbols, then the
+// landing symbols — scrolled through in one motion so the stop is a real reel, not a swap.
+function buildStrip(from: Grid, to: Grid, col: number, filler: number, symbols: SlotSymbolList): string[] {
+  const column = (g: Grid) => [0, 1, 2].map((r) => g[r][col]);
+  const extra = Array.from({ length: filler }, () => symbols[Math.floor(Math.random() * symbols.length)].id);
+  return [...column(from), ...extra, ...column(to)];
+}
+
+// Two matching symbols on the first two reels of any line → the last reel keeps spinning longer.
+function teases(g: Grid): boolean {
+  return PAYLINES.some(([a, b]) => g[a[0]][a[1]] === g[b[0]][b[1]]);
+}
+
+const CELL_CENTER = [50, 150, 250];
 
 export function Slots() {
   const level = useCasinoStore((s) => s.level);
@@ -86,6 +103,9 @@ function SlotMachineGame({ machine, onBack }: { machine: SlotMachineConfig; onBa
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
   const [autoSpins, setAutoSpins] = useState(0);
   const [showPaytable, setShowPaytable] = useState(false);
+  const [strips, setStrips] = useState<{ cells: string[]; duration: number }[] | null>(null);
+  const [spinId, setSpinId] = useState(0);
+  const [teasing, setTeasing] = useState(false);
   const [turbo, setTurbo] = useState(false);
   const [stopOnWin, setStopOnWin] = useState("");
   const [stopOnLoss, setStopOnLoss] = useState("");
@@ -109,10 +129,20 @@ function SlotMachineGame({ machine, onBack }: { machine: SlotMachineConfig; onBa
     placeBet(bet);
     playSound("spin");
 
-    const spinDurationMs = turbo ? 350 : 900;
     const finalGrid = spinGrid(machine.symbols, winBias);
+    const tease = !turbo && teases(finalGrid);
+    const nextStrips = [0, 1, 2].map((c) => {
+      const duration = (turbo ? 0.45 : 1.1) + c * (turbo ? 0.12 : 0.38) + (c === 2 && tease ? 1.4 : 0);
+      return { cells: buildStrip(grid, finalGrid, c, Math.round(duration * 22), machine.symbols), duration };
+    });
+    setStrips(nextStrips);
+    setSpinId((n) => n + 1);
+    setTeasing(false);
+    if (tease) setTimeout(() => setTeasing(true), nextStrips[1].duration * 1000);
+    const spinDurationMs = nextStrips[2].duration * 1000 + 120;
 
     setTimeout(() => {
+      setTeasing(false);
       setGrid(finalGrid);
       const res = evaluateSpin(finalGrid, bet, machine.symbols);
       setResult(res);
@@ -150,6 +180,7 @@ function SlotMachineGame({ machine, onBack }: { machine: SlotMachineConfig; onBa
   }, [autoSpins, spinning]);
 
   const winningCells = new Set((result?.wins ?? []).flatMap((w) => w.cells.map(([r, c]) => `${r}-${c}`)));
+  const shownStrips = strips ?? [0, 1, 2].map((c) => ({ cells: [0, 1, 2].map((r) => grid[r][c]), duration: 0 }));
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
@@ -164,48 +195,100 @@ function SlotMachineGame({ machine, onBack }: { machine: SlotMachineConfig; onBa
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <Card className="p-4 sm:p-8" glow>
-          <div className="relative mx-auto grid max-w-md grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-ink-950/60 p-3 sm:gap-3 sm:p-5">
-            {grid.map((row, r) =>
-              row.map((symbolId, c) => {
-                const key = `${r}-${c}`;
-                const isWinning = winningCells.has(key) && !spinning;
+          <div className="relative mx-auto max-w-md rounded-2xl border-4 border-gold-500/40 bg-gradient-to-b from-ink-900 to-ink-950 p-3 shadow-[inset_0_0_30px_rgba(0,0,0,0.8)] sm:p-5">
+            <div className="relative grid grid-cols-3 gap-2 sm:gap-3">
+              {shownStrips.map((strip, c) => {
+                const M = strip.cells.length;
+                const endPct = -((M - 3) / M) * 100;
+                const overshoot = endPct - (0.18 / M) * 100;
                 return (
                   <div
-                    key={key}
+                    key={c}
                     className={cn(
-                      "relative flex aspect-square items-center justify-center overflow-hidden rounded-xl border bg-gradient-to-b from-white/[0.06] to-transparent text-4xl sm:text-5xl",
-                      isWinning ? "border-gold-400 shadow-glow-gold" : "border-white/10"
+                      "relative aspect-[1/3] overflow-hidden rounded-xl border bg-gradient-to-b from-ice-100/[0.07] via-white/[0.02] to-ice-100/[0.07] transition-shadow",
+                      c === 2 && teasing ? "border-gold-400 shadow-glow-gold" : "border-white/10"
                     )}
                   >
-                    <AnimatePresence mode="popLayout">
-                      <motion.span
-                        key={spinning ? `spin-${r}-${c}-${Date.now()}` : `${symbolId}-${r}-${c}`}
-                        initial={{ y: spinning ? -60 : -20, opacity: 0 }}
-                        animate={{
-                          y: 0,
-                          opacity: 1,
-                          transition: spinning
-                            ? { repeat: Infinity, duration: 0.12, ease: "linear" }
-                            : { type: "spring", stiffness: 260, damping: 16, delay: c * 0.08 },
-                        }}
-                        className="select-none"
-                      >
-                        {spinning
-                          ? symbolGlyph(machine.symbols[Math.floor(Math.random() * machine.symbols.length)].id, machine.symbols)
-                          : symbolGlyph(symbolId, machine.symbols)}
-                      </motion.span>
-                    </AnimatePresence>
-                    {isWinning && (
-                      <motion.div
-                        className="absolute inset-0 bg-gold-400/10"
-                        animate={{ opacity: [0.2, 0.5, 0.2] }}
-                        transition={{ duration: 1.2, repeat: Infinity }}
-                      />
+                    <motion.div
+                      key={`${spinId}-${c}`}
+                      className="absolute inset-x-0 top-0 flex flex-col"
+                      style={{ height: `${(M / 3) * 100}%` }}
+                      initial={{ y: "0%" }}
+                      animate={
+                        strip.duration
+                          ? { y: ["0%", `${overshoot}%`, `${endPct}%`], filter: ["blur(0px)", "blur(3px)", "blur(3px)", "blur(0px)"] }
+                          : { y: "0%" }
+                      }
+                      transition={{
+                        y: { duration: strip.duration, times: [0, 0.93, 1], ease: [[0.35, 0.05, 0.25, 1], "easeInOut"] },
+                        filter: { duration: strip.duration, times: [0, 0.12, 0.7, 0.9] },
+                      }}
+                      onAnimationComplete={() => strip.duration && playSound("reel")}
+                    >
+                      {strip.cells.map((id, i) => (
+                        <div key={i} className="flex flex-1 select-none items-center justify-center text-4xl sm:text-5xl">
+                          {symbolGlyph(id, machine.symbols)}
+                        </div>
+                      ))}
+                    </motion.div>
+                    {/* glass curvature: reels look cylindrical, top/bottom rows darker */}
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.65),transparent_22%,transparent_78%,rgba(0,0,0,0.65))]" />
+                    {[0, 1, 2].map((r) =>
+                      winningCells.has(`${r}-${c}`) && !spinning ? (
+                        <motion.div
+                          key={r}
+                          className="absolute inset-x-1 rounded-lg border-2 border-gold-400 bg-gold-400/10"
+                          style={{ top: `calc(${r * 33.333}% + 4px)`, height: "calc(33.333% - 8px)" }}
+                          initial={{ scale: 0.6, opacity: 0 }}
+                          animate={{ scale: [1, 1.06, 1], opacity: 1 }}
+                          transition={{ scale: { duration: 0.8, repeat: Infinity }, opacity: { duration: 0.2 } }}
+                        />
+                      ) : null
                     )}
                   </div>
                 );
-              })
-            )}
+              })}
+              {!spinning && result && result.wins.length > 0 && (
+                <svg viewBox="0 0 300 300" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+                  {result.wins.map((w, k) => (
+                    <motion.polyline
+                      key={w.lineIndex}
+                      points={w.cells.map(([r, c]) => `${CELL_CENTER[c]},${CELL_CENTER[r]}`).join(" ")}
+                      fill="none"
+                      stroke="#f6bf4b"
+                      strokeWidth={5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      style={{ filter: "drop-shadow(0 0 6px rgba(246,191,75,0.9))" }}
+                      initial={{ pathLength: 0, opacity: 0 }}
+                      animate={{ pathLength: 1, opacity: [0, 1, 1, 0.7] }}
+                      transition={{ duration: 0.5, delay: k * 0.35 }}
+                    />
+                  ))}
+                </svg>
+              )}
+            </div>
+            {/* payline arrows on the cabinet */}
+            <div className="pointer-events-none absolute inset-y-3 -left-2 flex flex-col justify-around sm:inset-y-5">
+              {[0, 1, 2].map((r) => (
+                <span key={r} className="h-0 w-0 border-y-[6px] border-l-[8px] border-y-transparent border-l-gold-400/70" />
+              ))}
+            </div>
+            <AnimatePresence>
+              {!spinning && result && result.payout > 0 && (
+                <motion.div
+                  key={spinId}
+                  initial={{ scale: 0.3, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 14, delay: 0.2 }}
+                  className="pointer-events-none absolute inset-x-0 -bottom-4 mx-auto w-max rounded-full border border-gold-400 bg-ink-950 px-4 py-1 font-display text-sm font-bold text-gold-300 shadow-glow-gold"
+                >
+                  +{formatCredits(result.payout)}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <div className="mt-6 flex flex-wrap items-center justify-between gap-4">

@@ -13,6 +13,7 @@ import { maxBetFor } from "../lib/betting";
 import { xpForPayout } from "../lib/xp";
 import { ROWS, BUCKET_MULTIPLIERS, RISK_LABEL, dropBall, type RiskLevel, type DropResult } from "../lib/plinkoEngine";
 import { tierFromMultiplier, type WinTier } from "../lib/winTiers";
+import { playSound } from "../lib/sounds";
 
 const RISKS: RiskLevel[] = ["low", "medium", "high", "extreme"];
 const BALL_COUNTS = [1, 3, 5, 10];
@@ -27,12 +28,38 @@ interface Batch {
   results: DropResult[];
 }
 
+// Real board geometry: one peg spacing = one bucket width, so the ball strikes a peg at every
+// row and the last row's gaps are exactly the buckets. d = left/right displacement in half-pegs.
+const PEG_SPACING = 100 / (ROWS + 1);
+const SEG = 0.14; // seconds per row
+const pegX = (r: number, j: number) => 50 + (j - (r + 2) / 2) * PEG_SPACING;
+const pegY = (r: number) => r * ROW_HEIGHT + 10;
+
+function displacements(result: DropResult): number[] {
+  return result.path.reduce<number[]>((acc, right) => [...acc, acc[acc.length - 1] + (right ? 1 : -1)], [0]);
+}
+
+function pegHits(result: DropResult) {
+  return displacements(result).slice(0, ROWS).map((d, r) => ({ r, j: (d + r + 2) / 2 }));
+}
+
+// Keyframes: drop onto the first peg, then for each row a small hop (apex) and a fall onto the
+// next peg — eased out on the way up, eased in on the way down, i.e. a gravity parabola.
 function ballPath(result: DropResult) {
-  const displacements = result.path.reduce<number[]>((acc, r) => [...acc, acc[acc.length - 1] + (r ? 1 : -1)], [0]);
-  return {
-    xs: displacements.map((d) => ((d + ROWS) / (2 * ROWS)) * 100),
-    ys: displacements.map((_, i) => i * ROW_HEIGHT),
-  };
+  const d = displacements(result);
+  const X: number[] = [50, 50];
+  const Y: number[] = [-12, pegY(0) - 9];
+  for (let r = 0; r < ROWS; r++) {
+    const x = 50 + (d[r] * PEG_SPACING) / 2;
+    const nx = 50 + (d[r + 1] * PEG_SPACING) / 2;
+    const y = pegY(r) - 9;
+    X.push(x + (nx - x) * 0.45, nx);
+    Y.push(y - 7, r + 1 < ROWS ? pegY(r + 1) - 9 : ROWS * ROW_HEIGHT + 6);
+  }
+  const total = SEG * (ROWS + 1);
+  const at = X.map((_, k) => (k === 0 ? 0 : Math.min(1, (SEG + ((k - 1) / 2) * SEG) / total)));
+  const ease = X.slice(1).map((_, k) => (k === 0 ? "easeIn" : k % 2 === 1 ? "easeOut" : "easeIn"));
+  return { xs: X, ys: Y, times: { total, at, ease } };
 }
 
 export function Plinko() {
@@ -54,6 +81,7 @@ export function Plinko() {
   const [batch, setBatch] = useState<Batch | null>(null);
   const [landedCount, setLandedCount] = useState(0);
   const [dropKey, setDropKey] = useState(0);
+  const [bucketHits, setBucketHits] = useState<Record<number, number>>({});
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
 
   const plinkoHistory = history.filter((h) => h.game === "Plinko").slice(0, 8);
@@ -68,11 +96,15 @@ export function Plinko() {
     const results = Array.from({ length: ballCount }, () => dropBall(risk, winBias));
     setBatch({ bet, results });
     setLandedCount(0);
+    setBucketHits({});
     setDropKey((k) => k + 1);
+    displacements(results[0]).slice(0, ROWS).forEach((_, r) => setTimeout(() => playSound("peg"), (r + 1) * SEG * 1000));
     setDropping(true);
   }
 
-  function onBallLanded() {
+  function onBallLanded(bucket: number) {
+    playSound("chip");
+    setBucketHits((h) => ({ ...h, [bucket]: (h[bucket] ?? 0) + 1 }));
     setLandedCount((c) => c + 1);
   }
 
@@ -103,8 +135,6 @@ export function Plinko() {
     }
   }
 
-  const finalBuckets = !dropping && batch ? new Set(batch.results.map((r) => r.bucket)) : new Set<number>();
-
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
       <div className="mb-6 flex items-center justify-between">
@@ -118,52 +148,65 @@ export function Plinko() {
       <Card className="p-4 sm:p-8" glow>
         <div className="relative mx-auto w-full overflow-hidden rounded-2xl border border-white/10 bg-ink-950/60 pt-6" style={{ maxWidth: BOARD_WIDTH }}>
           <div className="relative" style={{ height: ROWS * ROW_HEIGHT + 20 }}>
-            {Array.from({ length: ROWS }, (_, r) => {
-              const count = r + 3;
-              const spacing = 100 / (count + 1);
-              return Array.from({ length: count }, (_, p) => (
+            {Array.from({ length: ROWS }, (_, r) =>
+              Array.from({ length: r + 3 }, (_, j) => (
                 <span
-                  key={`${r}-${p}`}
-                  className="absolute h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/20"
-                  style={{ left: `${spacing * (p + 1)}%`, top: r * ROW_HEIGHT + 8 }}
+                  key={`${r}-${j}`}
+                  className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/40 shadow-[0_0_4px_rgba(255,255,255,0.3)]"
+                  style={{ left: `${pegX(r, j)}%`, top: pegY(r) }}
                 />
-              ));
-            })}
+              ))
+            )}
+
+            {batch?.results.map((result, i) =>
+              pegHits(result).map(({ r, j }) => (
+                <motion.span
+                  key={`${dropKey}-${i}-${r}`}
+                  className="pointer-events-none absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold-300"
+                  style={{ left: `${pegX(r, j)}%`, top: pegY(r) }}
+                  initial={{ opacity: 0, scale: 1 }}
+                  animate={{ opacity: [0, 1, 0], scale: [1, 2.6, 1] }}
+                  transition={{ duration: 0.35, delay: i * STAGGER + (r + 1) * SEG }}
+                />
+              ))
+            )}
 
             {batch?.results.map((result, i) => {
-              const { xs, ys } = ballPath(result);
+              const { xs, ys, times } = ballPath(result);
               return (
                 <motion.div
                   key={`${dropKey}-${i}`}
-                  className="absolute h-3 w-3 -translate-x-1/2 rounded-full bg-gold-400 shadow-glow-gold"
-                  initial={{ left: `${xs[0]}%`, top: -10, opacity: 1 }}
+                  className="absolute h-3 w-3 -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_35%_30%,#fff6d5,#f6bf4b_55%,#a87512)] shadow-glow-gold"
+                  initial={{ left: `${xs[0]}%`, top: ys[0], opacity: 1 }}
                   animate={{ left: xs.map((v) => `${v}%`), top: ys }}
                   transition={{
-                    duration: ROWS * 0.15,
-                    delay: i * STAGGER,
-                    ease: "easeIn",
-                    times: xs.map((_, k) => k / (xs.length - 1)),
+                    left: { duration: times.total, delay: i * STAGGER, times: times.at, ease: "linear" },
+                    top: { duration: times.total, delay: i * STAGGER, times: times.at, ease: times.ease },
                   }}
-                  onAnimationComplete={onBallLanded}
+                  onAnimationComplete={() => onBallLanded(result.bucket)}
                 />
               );
             })}
           </div>
 
-          <div className="flex w-full">
+          <div className="flex w-full gap-0.5 px-0.5 pb-1">
             {BUCKET_MULTIPLIERS[risk].map((m, i) => {
-              const isWinner = finalBuckets.has(i);
+              const hit = bucketHits[i] ?? 0;
+              const edge = Math.abs(i - ROWS / 2) / (ROWS / 2); // 0 center → 1 edge
               return (
-                <div
-                  key={i}
+                <motion.div
+                  key={`${i}-${hit}`}
+                  initial={{ y: 0 }}
+                  animate={hit ? { y: [0, 7, -2, 0] } : { y: 0 }}
+                  transition={{ duration: 0.35 }}
                   className={cn(
-                    "flex flex-1 items-center justify-center border-t py-2 text-[9px] font-bold sm:text-xs",
-                    isWinner ? "border-gold-400 bg-gold-500/20 text-gold-300" : "border-white/10 text-ice-200/60",
-                    m >= 5 ? "text-red-400" : ""
+                    "flex flex-1 items-center justify-center rounded-md py-2 text-[9px] font-bold text-ink-950 sm:text-xs",
+                    hit > 0 && "ring-2 ring-white"
                   )}
+                  style={{ background: `hsl(${48 - edge * 48} 95% ${58 - edge * 8}%)`, boxShadow: hit ? "0 0 14px rgba(255,255,255,0.6)" : undefined }}
                 >
                   x{m}
-                </div>
+                </motion.div>
               );
             })}
           </div>

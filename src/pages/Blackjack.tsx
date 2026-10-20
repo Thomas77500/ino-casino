@@ -7,8 +7,9 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { BetInput } from "../components/ui/BetInput";
 import { WinCelebration } from "../components/ui/WinCelebration";
-import { PlayingCard } from "../components/games/PlayingCard";
-import { formatCredits } from "../lib/format";
+import { PlayingCard, ChipStack } from "../components/games/PlayingCard";
+import { motion, AnimatePresence } from "framer-motion";
+import { formatCredits, cn } from "../lib/format";
 import { maxBetFor } from "../lib/betting";
 import { xpForPayout } from "../lib/xp";
 import {
@@ -279,24 +280,35 @@ export function Blackjack() {
       </div>
 
       <Card className="p-4 sm:p-8" glow>
-        <div className="rounded-2xl border border-electric-500/20 bg-gradient-to-b from-electric-950/40 to-ink-950/60 p-4 sm:p-8">
+        <div className="relative overflow-hidden rounded-[2rem] border-4 border-[#5b3a1e] bg-[radial-gradient(ellipse_at_top,#14633d_0%,#0b4a2c_55%,#06301c_100%)] p-4 shadow-[inset_0_0_60px_rgba(0,0,0,0.6)] sm:p-8">
+          {/* sabot */}
+          <div className="absolute right-3 top-3 h-14 w-10 rotate-6 rounded-md border border-black/40 bg-gradient-to-b from-ink-800 to-ink-950 shadow-lg sm:right-5 sm:top-5 sm:h-20 sm:w-14">
+            <div className="absolute inset-x-1 top-1 h-3 rounded-sm bg-red-900/80 sm:h-4" />
+            <span className="absolute bottom-1 inset-x-0 text-center text-[7px] uppercase tracking-wider text-gold-400/70 sm:text-[9px]">Sabot</span>
+          </div>
+          <p className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center font-display text-[10px] uppercase tracking-[0.35em] text-gold-300/25 sm:text-xs">
+            Blackjack paie 3 contre 2 · Le croupier tire jusqu'à 16
+          </p>
           <div className="mb-8">
             <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-wide text-ice-200/50">
               Croupier {dealerCards.length > 0 && !dealerHidden && <span className="text-white">— {handValue(dealerCards).total}</span>}
             </div>
-            <div className="flex gap-2 sm:gap-3">
+            <div className="flex">
               {dealerCards.map((c, i) => (
-                <PlayingCard key={c.id} card={c} hidden={i === 1 && dealerHidden} index={i} />
+                // deal order is player, dealer, player, dealer — later draws come straight off the shoe
+                <div key={c.id} className={i > 0 ? "-ml-7 sm:-ml-10" : ""}>
+                  <PlayingCard card={c} hidden={i === 1 && dealerHidden} index={i < 2 ? i * 2 + 1 : 0} />
+                </div>
               ))}
-              {dealerCards.length === 0 && <PlayingCard card={null} hidden index={0} />}
+              {dealerCards.length === 0 && <PlayingCard card={null} hidden placeholder />}
             </div>
           </div>
 
           <div className="flex flex-col gap-4">
             {hands.length === 0 && (
-              <div className="flex gap-2 sm:gap-3 opacity-40">
-                <PlayingCard card={null} hidden />
-                <PlayingCard card={null} hidden />
+              <div className="flex">
+                <PlayingCard card={null} hidden placeholder />
+                <div className="-ml-7 sm:-ml-10"><PlayingCard card={null} hidden placeholder /></div>
               </div>
             )}
             {hands.map((h, i) => (
@@ -313,10 +325,37 @@ export function Blackjack() {
                     <Badge tone="gold">{PERFECT_PAIR_LABEL[sideBetResult]} x{PERFECT_PAIR_PAYOUT[sideBetResult]}</Badge>
                   )}
                 </div>
-                <div className="flex gap-2 sm:gap-3">
-                  {h.cards.map((c, ci) => (
-                    <PlayingCard key={c.id} card={c} index={ci} />
-                  ))}
+                <div className="flex items-end gap-4">
+                  <div className="relative flex">
+                    {h.cards.map((c, ci) => (
+                      <div key={c.id} className={ci > 0 ? "-ml-7 sm:-ml-10" : ""}>
+                        <PlayingCard card={c} index={hands.length === 1 && ci < 2 ? ci * 2 : 0} />
+                      </div>
+                    ))}
+                    <AnimatePresence>
+                      {(h.status === "bust" || h.outcome) && (
+                        <motion.span
+                          initial={{ scale: 3, opacity: 0, rotate: -25 }}
+                          animate={{ scale: 1, opacity: 1, rotate: -12 }}
+                          transition={{ type: "spring", stiffness: 380, damping: 14, delay: h.status === "bust" ? 0.5 : 0.1 }}
+                          className={cn(
+                            "pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border-4 px-2 py-0.5 font-display text-lg font-black uppercase tracking-wider backdrop-blur-sm sm:text-2xl",
+                            h.outcome === "lose" || (!h.outcome && h.status === "bust")
+                              ? "border-red-500 text-red-400 bg-black/40"
+                              : h.outcome === "push"
+                                ? "border-sky-400 text-sky-300 bg-black/40"
+                                : "border-gold-400 text-gold-300 bg-black/40"
+                          )}
+                        >
+                          {h.status === "bust" ? "Bust" : h.outcome === "blackjack" ? "Blackjack" : h.outcome === "win" ? "Gagné" : h.outcome === "push" ? "Push" : "Perdu"}
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <ChipStack amount={h.bet} />
+                    {h.payout !== undefined && h.payout > h.bet && <ChipStack amount={h.payout - h.bet} tone="emerald" fromDealer />}
+                  </div>
                 </div>
               </div>
             ))}

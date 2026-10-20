@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useCasinoStore } from "../store/casinoStore";
 import { useToastStore } from "../store/toastStore";
 import { useGameStatusStore } from "../store/gameStatusStore";
@@ -8,7 +8,8 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { BetInput } from "../components/ui/BetInput";
 import { WinCelebration } from "../components/ui/WinCelebration";
-import { RouletteWheel } from "../components/games/RouletteWheel";
+import { RouletteWheel, SETTLE_MS } from "../components/games/RouletteWheel";
+import { playSound } from "../lib/sounds";
 import { BonusWheel } from "../components/games/BonusWheel";
 import { formatCredits, cn } from "../lib/format";
 import { maxBetFor } from "../lib/betting";
@@ -60,6 +61,17 @@ export function Roulette() {
 
   const rouletteHistory = history.filter((h) => h.game === "Roulette").slice(0, 8);
   const staked = slip.reduce((sum, s) => sum + s.amount, 0);
+  // Casino "tableau" of recent numbers, rebuilt from persisted history so it survives refreshes.
+  const pastSpins = history
+    .filter((h) => h.game === "Roulette")
+    .map((h) => ({ id: h.id, n: Number(/Numéro (\d+)/.exec(h.label)?.[1]) }))
+    .filter((p) => !Number.isNaN(p.n));
+  const pastNumbers = pastSpins.map((p) => p.n);
+  const freq = new Map<number, number>();
+  pastNumbers.slice(0, 100).forEach((n) => freq.set(n, (freq.get(n) ?? 0) + 1));
+  const byFreq = Array.from({ length: 37 }, (_, n) => ({ n, c: freq.get(n) ?? 0 })).sort((a, b) => b.c - a.c);
+  const hot = pastNumbers.length >= 10 ? byFreq.slice(0, 4) : [];
+  const cold = pastNumbers.length >= 10 ? byFreq.slice(-4).reverse() : [];
   const busy = spinning || (darkMode && drawPhase !== "ready");
 
   function startLuckyDraw() {
@@ -95,6 +107,7 @@ export function Roulette() {
 
   function addBet(bet: BetKind) {
     if (busy) return;
+    playSound("chip");
     const key = betKey(bet);
     setSlip((prev) => {
       const existing = prev.find((s) => s.key === key);
@@ -143,7 +156,7 @@ export function Roulette() {
         payout += result.bonusAmount;
         setSpinning(false);
         finalize(result, payout, luckyHit);
-      }, 3100);
+      }, SETTLE_MS + 350);
     }, 50);
   }
 
@@ -225,13 +238,79 @@ export function Roulette() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[360px_1fr]">
         <Card className={cn("flex min-w-0 flex-col items-center gap-4 p-5", darkMode ? "border-red-500/30 shadow-glow-red" : "shadow-glow")}>
-          <RouletteWheel winningNumber={outcome?.number ?? null} spinTrigger={spinTrigger} spinning={spinning} />
-          {outcome && !spinning && (
-            <div className="flex items-center gap-2">
-              <Badge tone={outcome.color === "red" ? "neutral" : outcome.color === "black" ? "neutral" : "success"}>
-                {outcome.color === "red" ? "Rouge" : outcome.color === "black" ? "Noir" : "Zéro"}
-              </Badge>
-              {outcome.luckyZone && <Badge tone="gold">Zone chanceuse x2</Badge>}
+          <div className="relative w-full">
+            <RouletteWheel winningNumber={outcome?.number ?? null} spinTrigger={spinTrigger} />
+            <AnimatePresence>
+              {spinning && (
+                <motion.p
+                  key="rnvp"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: [0, 1, 1, 0.6], y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 1.6, delay: 1.2 }}
+                  className="pointer-events-none absolute inset-x-0 -bottom-1 text-center font-display text-xs font-bold uppercase tracking-[0.3em] text-gold-300"
+                >
+                  Rien ne va plus
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
+          <AnimatePresence mode="wait">
+            {outcome && !spinning && (
+              <motion.div
+                key={spinTrigger}
+                initial={{ scale: 0.4, opacity: 0, rotateX: 90 }}
+                animate={{ scale: 1, opacity: 1, rotateX: 0 }}
+                transition={{ type: "spring", stiffness: 260, damping: 15 }}
+                className="flex items-center gap-3"
+              >
+                <span
+                  className={cn(
+                    "grid h-14 w-14 place-items-center rounded-full border-2 border-gold-400 font-display text-2xl font-bold text-white shadow-glow-gold",
+                    outcome.color === "red" ? "bg-red-700" : outcome.color === "black" ? "bg-ink-900" : "bg-emerald-700"
+                  )}
+                >
+                  {outcome.number}
+                </span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-semibold text-white">
+                    {outcome.color === "red" ? "Rouge" : outcome.color === "black" ? "Noir" : "Zéro"}
+                    {outcome.number !== 0 && ` · ${outcome.number % 2 === 0 ? "Pair" : "Impair"} · ${outcome.number <= 18 ? "Manque" : "Passe"}`}
+                  </span>
+                  {outcome.luckyZone && <Badge tone="gold">Zone chanceuse x2</Badge>}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {pastNumbers.length > 0 && (
+            <div className="w-full rounded-xl border border-white/10 bg-black/30 p-3">
+              <p className="mb-2 text-[10px] uppercase tracking-wide text-ice-200/50">Tableau — derniers numéros</p>
+              <div className="flex gap-1 overflow-hidden">
+                <AnimatePresence initial={false}>
+                  {pastSpins.slice(0, 12).map(({ id, n }, i) => (
+                    <motion.span
+                      key={id}
+                      layout
+                      initial={{ scale: 0, x: -20 }}
+                      animate={{ scale: 1, x: 0 }}
+                      className={cn(
+                        "grid h-7 w-7 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white",
+                        colorOf(n) === "red" ? "bg-red-700" : colorOf(n) === "black" ? "bg-ink-800 border border-white/10" : "bg-emerald-700",
+                        i === 0 && "ring-2 ring-gold-400"
+                      )}
+                    >
+                      {n}
+                    </motion.span>
+                  ))}
+                </AnimatePresence>
+              </div>
+              {hot.length > 0 && (
+                <div className="mt-2 flex justify-between text-[10px]">
+                  <span className="text-red-300/80">🔥 {hot.map((h) => h.n).join(" · ")}</span>
+                  <span className="text-sky-300/80">❄️ {cold.map((h) => h.n).join(" · ")}</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -386,9 +465,15 @@ export function Roulette() {
 
 function ChipDot({ amount }: { amount: number }) {
   return (
-    <span className="absolute -top-1.5 -right-1.5 grid h-4 w-4 place-items-center rounded-full bg-gold-400 text-[8px] font-bold text-ink-950 shadow-glow-gold">
+    <motion.span
+      key={amount}
+      initial={{ scale: 2.2, y: -14, opacity: 0 }}
+      animate={{ scale: 1, y: 0, opacity: 1 }}
+      transition={{ type: "spring", stiffness: 500, damping: 18 }}
+      className="absolute -top-1.5 -right-1.5 z-10 grid h-5 w-5 place-items-center rounded-full border-2 border-dashed border-white/70 bg-gold-400 text-[8px] font-bold text-ink-950 shadow-glow-gold"
+    >
       {amount >= 1000 ? `${Math.round(amount / 1000)}k` : amount}
-    </span>
+    </motion.span>
   );
 }
 
