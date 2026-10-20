@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { useCasinoStore } from "../store/casinoStore";
 import { useTcgStore, type PulledCard, type DuelResult } from "../store/tcgStore";
 import { useToastStore } from "../store/toastStore";
@@ -8,9 +8,11 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { ProgressBar } from "../components/ui/ProgressBar";
 import { TcgCardFace } from "../components/ui/TcgCardFace";
+import { Modal } from "../components/ui/Modal";
+import { playSound } from "../lib/sounds";
 import { IconPack } from "../components/icons";
 import { formatCredits, cn } from "../lib/format";
-import { TCG_EDITIONS, RARITY_ORDER, RARITY_LABEL, TRADE_IN_COST, type TcgEdition, type CardRarity } from "../lib/tcgCards";
+import { TCG_EDITIONS, RARITY_ORDER, RARITY_LABEL, TRADE_IN_COST, type TcgEdition, type CardRarity, type TcgCard } from "../lib/tcgCards";
 import { currentCardValue } from "../lib/tcgMarket";
 
 type View = "lobby" | "pack" | "opening" | "collection" | "duel";
@@ -109,9 +111,7 @@ function Lobby({ level, onOpen }: { level: number; onOpen: (e: TcgEdition, kind:
         return (
           <Card key={e.id} className={cn("flex flex-col p-5", locked && "opacity-50")}>
             <div className="mb-3 flex items-center justify-between">
-              <div className={cn("grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br text-2xl", e.accent)}>
-                {e.cards[e.cards.length - 1].glyph}
-              </div>
+              <PackArt edition={e} small />
               {locked && <Badge tone="neutral">Niveau {e.minLevel} requis</Badge>}
             </div>
             <h3 className="font-display text-lg font-bold text-white">{e.name}</h3>
@@ -136,8 +136,36 @@ function Lobby({ level, onOpen }: { level: number; onOpen: (e: TcgEdition, kind:
   );
 }
 
-// Anticipation beat before the reveal — a closed pack the player taps, matching the "hold to
-// open" moment real TCG-opener apps lead with, instead of jumping straight to the cards.
+// A sealed foil pack: crimped edges, the edition's chase card on the front, a sheen sweeping
+// across. Shared by the shop tiles and the tear-open screen.
+function PackArt({ edition, small, torn }: { edition: TcgEdition; small?: boolean; torn?: boolean }) {
+  const chase = edition.cards[edition.cards.length - 1];
+  const crimp = "repeating-linear-gradient(90deg, rgba(255,255,255,0.35) 0 3px, rgba(0,0,0,0.25) 3px 6px)";
+  return (
+    <div className={cn("relative overflow-hidden rounded-md shadow-[0_12px_30px_-8px_rgba(0,0,0,0.8)]", small ? "h-20 w-14" : "h-64 w-44 sm:h-72 sm:w-48")}>
+      <div className={cn("absolute inset-0 bg-gradient-to-br", edition.accent)} />
+      <div className="absolute inset-0 bg-[linear-gradient(160deg,rgba(255,255,255,0.35),transparent_35%,transparent_65%,rgba(0,0,0,0.35))]" />
+      <div className="absolute inset-x-0 top-0" style={{ height: small ? 5 : 12, backgroundImage: crimp, opacity: torn ? 0 : 1 }} />
+      <div className="absolute inset-x-0 bottom-0" style={{ height: small ? 5 : 12, backgroundImage: crimp }} />
+      <div className="absolute inset-0 grid place-items-center">
+        <span className={cn("drop-shadow-[0_6px_14px_rgba(0,0,0,0.6)]", small ? "text-2xl" : "text-7xl")}>{chase.glyph}</span>
+      </div>
+      {!small && (
+        <>
+          <p className="absolute inset-x-0 top-6 text-center font-display text-[10px] font-black uppercase tracking-[0.35em] text-white/90">Ino TCG</p>
+          <p className="absolute inset-x-2 bottom-6 text-center font-display text-sm font-bold text-white drop-shadow">{edition.name}</p>
+        </>
+      )}
+      <div
+        className="pointer-events-none absolute inset-0 animate-shimmer opacity-60"
+        style={{ backgroundImage: "linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 48%, transparent 60%)", backgroundSize: "250% 250%" }}
+      />
+    </div>
+  );
+}
+
+// Anticipation beat before the reveal: a sealed pack the player tears open — the top strip rips
+// off along the crimp, then the pack drops away and the cards come out.
 function PackReveal({ pending, onTap }: { pending: PendingOpen; onTap: () => void }) {
   const [tapped, setTapped] = useState(false);
   const { edition, kind } = pending;
@@ -145,29 +173,47 @@ function PackReveal({ pending, onTap }: { pending: PendingOpen; onTap: () => voi
   function handleTap() {
     if (tapped) return;
     setTapped(true);
-    setTimeout(onTap, 650);
+    playSound("scratch");
+    setTimeout(() => playSound("card"), 350);
+    setTimeout(onTap, 1100);
   }
 
   return (
-    <div className="flex flex-col items-center justify-center gap-6 py-16">
+    <div className="flex flex-col items-center justify-center gap-6 py-12">
       <motion.button
         onClick={handleTap}
-        className={cn(
-          "grid h-56 w-40 place-items-center rounded-2xl bg-gradient-to-br text-6xl shadow-glow sm:h-64 sm:w-44",
-          edition.accent
-        )}
-        animate={
-          tapped
-            ? { rotate: [0, -4, 4, -4, 4, 0], scale: [1, 1.08, 1.08, 1.08, 1.08, 1.3], opacity: [1, 1, 1, 1, 1, 0] }
-            : { y: [0, -8, 0] }
-        }
-        transition={tapped ? { duration: 0.65, ease: "easeInOut" } : { duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+        className="relative"
+        style={{ perspective: 800 }}
+        animate={tapped ? { y: [0, 0, 0, 260], opacity: [1, 1, 1, 0] } : { y: [0, -10, 0], rotateZ: [-1.5, 1.5, -1.5] }}
+        transition={tapped ? { duration: 1.1, times: [0, 0.3, 0.6, 1], ease: "easeIn" } : { duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
       >
-        {edition.cards[edition.cards.length - 1].glyph}
+        <div className="absolute -inset-8 rounded-full bg-[radial-gradient(circle,rgba(95,184,255,0.35),transparent_65%)] blur-xl" />
+        <PackArt edition={edition} torn={tapped} />
+        {/* tear strip */}
+        <motion.div
+          className="absolute inset-x-0 top-0 h-7 overflow-hidden rounded-t-md"
+          animate={tapped ? { y: -90, x: 70, rotate: 28, opacity: 0 } : {}}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        >
+          <div className={cn("absolute inset-0 bg-gradient-to-br", edition.accent)} />
+          <div className="absolute inset-x-0 top-0 h-3" style={{ backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,0.35) 0 3px, rgba(0,0,0,0.25) 3px 6px)" }} />
+          <div className="absolute inset-x-0 bottom-0 border-b-2 border-dashed border-white/60" />
+        </motion.div>
+        {/* light spilling out of the opened pack */}
+        {tapped && (
+          <motion.div
+            className="pointer-events-none absolute inset-x-2 top-5 h-24 rounded-full bg-[radial-gradient(ellipse_at_top,rgba(255,241,193,0.95),transparent_70%)]"
+            initial={{ opacity: 0, scaleY: 0.2 }}
+            animate={{ opacity: [0, 1, 0.8], scaleY: [0.2, 1.4, 1.2] }}
+            transition={{ duration: 0.5, delay: 0.25 }}
+          />
+        )}
       </motion.button>
       <div className="text-center">
         <p className="font-display text-lg font-bold text-white">{edition.name}</p>
-        <p className="text-sm text-ice-200/50">{kind === "display" ? "Display" : kind === "free" ? "Booster gratuit" : "Booster"} — {tapped ? "Ouverture..." : "Touche le paquet pour l'ouvrir"}</p>
+        <p className="text-sm text-ice-200/50">
+          {kind === "display" ? "Display" : kind === "free" ? "Booster gratuit" : "Booster"} — {tapped ? "Ouverture..." : "Touche le paquet pour le déchirer"}
+        </p>
       </div>
     </div>
   );
@@ -200,8 +246,14 @@ function Opening({ edition, result, onDone }: { edition: TcgEdition; result: Ope
   const currentIsDramatic = !isDisplay && revealedCount > 0 && DRAMATIC_RARITIES.includes(pulls[revealedCount - 1]?.rarity);
 
   function revealNext() {
-    if (!isDisplay && revealedCount < pulls.length) setRevealedCount((n) => n + 1);
+    if (isDisplay || revealedCount >= pulls.length) return;
+    const r = pulls[revealedCount].rarity;
+    playSound(r === "ultraRare" || r === "secrete" ? "bigwin" : DRAMATIC_RARITIES.includes(r) ? "win" : "card");
+    setRevealedCount((n) => n + 1);
   }
+
+  const lastRevealed = !isDisplay && revealedCount > 0 ? pulls[revealedCount - 1] : null;
+  const flash = lastRevealed && (lastRevealed.rarity === "ultraRare" || lastRevealed.rarity === "secrete");
 
   function sellOne(i: number) {
     sellCards([{ key: pulls[i].key, value: pulls[i].value }]);
@@ -219,6 +271,19 @@ function Opening({ edition, result, onDone }: { edition: TcgEdition; result: Ope
 
   return (
     <Card className="p-6" glow>
+      <AnimatePresence>
+        {flash && (
+          <motion.div
+            key={revealedCount}
+            className="pointer-events-none fixed inset-0 z-[60]"
+            style={{ background: lastRevealed!.rarity === "secrete" ? "radial-gradient(circle, rgba(255,106,213,0.55), rgba(255,215,122,0.35) 40%, transparent 75%)" : "radial-gradient(circle, rgba(255,241,193,0.7), rgba(246,191,75,0.3) 40%, transparent 75%)" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 1, 0] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.9 }}
+          />
+        )}
+      </AnimatePresence>
       <div className="mb-4 flex items-center justify-between">
         <h2 className="font-display text-lg font-bold text-white">{isDisplay ? `Display — ${edition.name}` : `Booster — ${edition.name}`}</h2>
         {!isDisplay && !allRevealed && (
@@ -267,7 +332,7 @@ function Opening({ edition, result, onDone }: { edition: TcgEdition; result: Ope
       )}
 
       {!isDisplay && (
-        <div className={cn("relative flex flex-wrap justify-center gap-3 rounded-xl transition-colors", currentIsDramatic && "bg-ink-950/40 p-3")} onClick={revealNext}>
+        <div className={cn("relative flex flex-wrap justify-center gap-3 overflow-hidden rounded-xl transition-colors", currentIsDramatic && "bg-ink-950/40 p-3")} onClick={revealNext}>
           {currentIsDramatic && (
             <motion.div
               className="pointer-events-none absolute inset-0 opacity-30"
@@ -285,6 +350,7 @@ function Opening({ edition, result, onDone }: { edition: TcgEdition; result: Ope
                 card={p}
                 accent={edition.accent}
                 revealed={i < revealedCount}
+                tell={i === revealedCount && DRAMATIC_RARITIES.includes(p.rarity) ? p.rarity : undefined}
                 dramatic={i === revealedCount - 1 && currentIsDramatic}
                 showEffects={i < revealedCount}
                 foil={p.foil}
@@ -400,6 +466,8 @@ function Duel() {
   );
 }
 
+type CollectionFilter = "all" | "owned" | "missing" | CardRarity;
+
 function Collection() {
   const collection = useTcgStore((s) => s.collection);
   const sellCards = useTcgStore((s) => s.sellCards);
@@ -408,21 +476,29 @@ function Collection() {
   const claimCompletionBonus = useTcgStore((s) => s.claimCompletionBonus);
   const push = useToastStore((s) => s.push);
   const [editionId, setEditionId] = useState(TCG_EDITIONS[0].id);
+  const [filter, setFilter] = useState<CollectionFilter>("all");
+  const [inspect, setInspect] = useState<{ card: TcgCard; foil: boolean } | null>(null);
   const edition = TCG_EDITIONS.find((e) => e.id === editionId)!;
 
   function ownedCount(cardId: string): { normal: number; foil: number } {
     return { normal: collection[cardId] ?? 0, foil: collection[`${cardId}:foil`] ?? 0 };
   }
+  const owns = (c: TcgCard) => {
+    const { normal, foil } = ownedCount(c.id);
+    return normal > 0 || foil > 0;
+  };
 
   function sellOne(cardId: string, foil: boolean, rarity: CardRarity) {
     const value = currentCardValue(rarity, foil);
     sellCards([{ key: foil ? `${cardId}:foil` : cardId, value }]);
+    playSound("chip");
     push({ kind: "success", title: `Vendue — +${formatCredits(value)}` });
   }
 
   function tradeOne(cardId: string, foil: boolean) {
     const won = tradeIn(editionId, cardId, foil);
     if (!won) return;
+    playSound("win");
     push({ kind: won.isNew ? "bonus" : "success", title: `Échangée contre ${won.name} (${RARITY_LABEL[won.rarity]})${won.isNew ? " — NOUVEAU !" : ""}` });
   }
 
@@ -431,29 +507,84 @@ function Collection() {
     if (result) push({ kind: "bonus", title: `Édition complétée ! +${formatCredits(result.credits)} crédits + cadre exclusif` });
   }
 
-  const obtainedCount = edition.cards.filter((c) => {
-    const { normal, foil } = ownedCount(c.id);
-    return normal > 0 || foil > 0;
-  }).length;
+  const obtainedCount = edition.cards.filter(owns).length;
   const complete = obtainedCount === edition.cards.length;
+  const pct = Math.round((obtainedCount / edition.cards.length) * 100);
+  const collectionValue = edition.cards.reduce((sum, c) => {
+    const { normal, foil } = ownedCount(c.id);
+    return sum + normal * currentCardValue(c.rarity, false) + foil * currentCardValue(c.rarity, true);
+  }, 0);
+  const shown = edition.cards.filter((c) =>
+    filter === "all" ? true : filter === "owned" ? owns(c) : filter === "missing" ? !owns(c) : c.rarity === filter
+  );
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {TCG_EDITIONS.map((e) => (
-          <button
-            key={e.id}
-            onClick={() => setEditionId(e.id)}
-            className={cn(
-              "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
-              editionId === e.id ? "bg-electric-500 text-white" : "bg-white/[0.03] text-ice-200/60 hover:text-white"
-            )}
-          >
-            {e.name}
-          </button>
-        ))}
-        <span className="ml-auto text-xs text-ice-200/50">{obtainedCount}/{edition.cards.length} obtenues</span>
+        {TCG_EDITIONS.map((e) => {
+          const got = e.cards.filter(owns).length;
+          return (
+            <button
+              key={e.id}
+              onClick={() => setEditionId(e.id)}
+              className={cn(
+                "flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors",
+                editionId === e.id ? "border-electric-400/60 bg-electric-500/15 text-white" : "border-white/10 bg-white/[0.03] text-ice-200/60 hover:text-white"
+              )}
+            >
+              <PackArt edition={e} small />
+              <span className="flex flex-col items-start">
+                {e.name}
+                <span className="text-[10px] font-normal text-ice-200/50">{got}/{e.cards.length}</span>
+              </span>
+            </button>
+          );
+        })}
       </div>
+
+      {/* binder header: progress, value, per-rarity completion */}
+      <Card className="mb-4 overflow-hidden p-4">
+        <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br opacity-20", edition.accent)} />
+        <div className="relative flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wider text-ice-200/50">Classeur</p>
+            <p className="font-display text-xl font-bold text-white">{edition.name}</p>
+          </div>
+          <div className="text-right">
+            <p className="font-display text-3xl font-black text-white">{pct}%</p>
+            <p className="text-xs text-ice-200/60">
+              {obtainedCount}/{edition.cards.length} · valeur <span className="font-semibold text-gold-400">{formatCredits(collectionValue)}</span>
+            </p>
+          </div>
+        </div>
+        <div className="relative mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-electric-500 via-electric-400 to-gold-400"
+            initial={{ width: 0 }}
+            animate={{ width: `${pct}%` }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          />
+        </div>
+        <div className="relative mt-3 flex flex-wrap gap-1.5">
+          {(["all", "owned", "missing", ...RARITY_ORDER] as CollectionFilter[]).map((f) => {
+            const rarityCards = RARITY_ORDER.includes(f as CardRarity) ? edition.cards.filter((c) => c.rarity === f) : null;
+            if (rarityCards && rarityCards.length === 0) return null;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                  filter === f ? "border-gold-400/60 bg-gold-500/15 text-gold-300" : "border-white/10 text-ice-200/60 hover:text-white"
+                )}
+              >
+                {f === "all" ? "Toutes" : f === "owned" ? "Obtenues" : f === "missing" ? "Manquantes" : RARITY_LABEL[f as CardRarity]}
+                {rarityCards && <span className="ml-1 text-ice-200/40">{rarityCards.filter(owns).length}/{rarityCards.length}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </Card>
 
       {complete && !completionClaimed[editionId] && (
         <Card className="mb-4 flex flex-wrap items-center justify-between gap-3 border-gold-400/50 bg-gold-500/10 p-4 shadow-glow-gold">
@@ -465,44 +596,60 @@ function Collection() {
         </Card>
       )}
 
-      <div className="flex flex-wrap gap-4">
-        {edition.cards.map((card) => {
-          const { normal, foil } = ownedCount(card.id);
-          if (normal === 0 && foil === 0) {
-            return <TcgCardFace key={card.id} card={card} accent={edition.accent} size="sm" locked />;
-          }
-          const nextRarity = RARITY_ORDER[RARITY_ORDER.indexOf(card.rarity) + 1];
-          const tradeCost = TRADE_IN_COST[card.rarity];
-          return (
-            <div key={card.id} className="flex flex-col gap-2">
-              {normal > 0 && (
-                <div>
-                  <TcgCardFace card={card} accent={edition.accent} size="sm" value={currentCardValue(card.rarity, false)} />
-                  <p className="mt-1 text-center text-[10px] text-ice-200/40">x{normal}</p>
-                  <Button size="sm" variant="ghost" className="mt-1 w-full text-[10px]" onClick={() => sellOne(card.id, false, card.rarity)}>Vendre 1</Button>
-                  {nextRarity && normal >= tradeCost && (
-                    <Button size="sm" variant="secondary" className="mt-1 w-full text-[10px]" onClick={() => tradeOne(card.id, false)}>
-                      Échanger {tradeCost} → {RARITY_LABEL[nextRarity]}
-                    </Button>
-                  )}
-                </div>
-              )}
-              {foil > 0 && (
-                <div>
-                  <TcgCardFace card={card} accent={edition.accent} size="sm" foil value={currentCardValue(card.rarity, true)} />
-                  <p className="mt-1 text-center text-[10px] text-ice-200/40">Foil · x{foil}</p>
-                  <Button size="sm" variant="ghost" className="mt-1 w-full text-[10px]" onClick={() => sellOne(card.id, true, card.rarity)}>Vendre 1</Button>
-                  {nextRarity && foil >= tradeCost && (
-                    <Button size="sm" variant="secondary" className="mt-1 w-full text-[10px]" onClick={() => tradeOne(card.id, true)}>
-                      Échanger {tradeCost} → {RARITY_LABEL[nextRarity]}
-                    </Button>
-                  )}
-                </div>
-              )}
+      <motion.div layout className="grid grid-cols-[repeat(auto-fill,minmax(8rem,1fr))] justify-items-center gap-4 rounded-2xl border border-white/5 bg-black/20 p-4">
+        <AnimatePresence mode="popLayout">
+          {shown.map((card) => {
+            const { normal, foil } = ownedCount(card.id);
+            if (normal === 0 && foil === 0) {
+              return (
+                <motion.div key={card.id} layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
+                  <TcgCardFace card={card} accent={edition.accent} size="sm" locked />
+                </motion.div>
+              );
+            }
+            const nextRarity = RARITY_ORDER[RARITY_ORDER.indexOf(card.rarity) + 1];
+            const tradeCost = TRADE_IN_COST[card.rarity];
+            return (
+              <motion.div key={card.id} layout initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="flex flex-col gap-2">
+                {[false, true].map((isFoil) => {
+                  const count = isFoil ? foil : normal;
+                  if (count === 0) return null;
+                  return (
+                    <div key={String(isFoil)} className="relative w-32">
+                      <button className="block" onClick={() => setInspect({ card, foil: isFoil })} title="Inspecter">
+                        <TcgCardFace card={card} accent={edition.accent} size="sm" foil={isFoil} value={currentCardValue(card.rarity, isFoil)} />
+                      </button>
+                      {count > 1 && (
+                        <span className="absolute -right-2 -top-2 z-20 grid h-6 min-w-6 place-items-center rounded-full border-2 border-ink-950 bg-gold-400 px-1 text-[10px] font-black text-ink-950">
+                          x{count}
+                        </span>
+                      )}
+                      {isFoil && <p className="mt-1 text-center text-[10px] font-semibold text-gold-300">Foil ✦</p>}
+                      <Button size="sm" variant="ghost" className="mt-1 w-full text-[10px]" onClick={() => sellOne(card.id, isFoil, card.rarity)}>Vendre 1</Button>
+                      {nextRarity && count >= tradeCost && (
+                        <Button size="sm" variant="secondary" className="mt-1 w-full !whitespace-normal text-[10px] leading-tight" onClick={() => tradeOne(card.id, isFoil)}>
+                          Échanger {tradeCost} → {RARITY_LABEL[nextRarity]}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </motion.div>
+
+      <Modal open={inspect !== null} onClose={() => setInspect(null)}>
+        {inspect && (
+          <div className="flex flex-col items-center gap-3 py-2">
+            <div className="my-4 scale-110 sm:my-10 sm:scale-125">
+              <TcgCardFace card={inspect.card} accent={edition.accent} foil={inspect.foil} value={currentCardValue(inspect.card.rarity, inspect.foil)} showEffects />
             </div>
-          );
-        })}
-      </div>
+            <p className="text-center text-xs text-ice-200/50">Bouge la souris ou le doigt sur la carte pour faire jouer la lumière.</p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

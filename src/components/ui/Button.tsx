@@ -11,11 +11,11 @@ interface ButtonProps extends Omit<HTMLMotionProps<"button">, "ref"> {
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-gradient-to-b from-electric-400 to-electric-600 text-white shadow-glow hover:from-electric-400 hover:to-electric-500 border border-electric-400/40",
+    "btn-sheen bg-gradient-to-b from-electric-400 to-electric-600 text-white shadow-glow hover:from-electric-400 hover:to-electric-500 border border-electric-400/40",
   secondary:
     "bg-white/[0.06] text-ice-100 border border-white/10 hover:bg-white/[0.1] shadow-inner-glass",
   ghost: "bg-transparent text-ice-200/80 hover:text-white hover:bg-white/5",
-  gold: "bg-gradient-to-b from-gold-400 to-gold-500 text-ink-950 shadow-glow-gold border border-gold-400/40 font-semibold",
+  gold: "btn-sheen bg-[linear-gradient(180deg,#fff1c1_0%,#ffd77a_35%,#f6bf4b_70%,#c9922c_100%)] text-ink-950 shadow-glow-gold border border-gold-400/60 font-semibold",
 };
 
 const sizes: Record<Size, string> = {

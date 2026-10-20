@@ -5,7 +5,7 @@ export function Card({ className, glow, ...props }: HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cn(
-        "relative rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl shadow-inner-glass",
+        "glass relative rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.025] backdrop-blur-xl shadow-inner-glass",
         glow && "shadow-glow",
         className
       )}

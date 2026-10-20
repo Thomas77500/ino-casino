@@ -51,11 +51,16 @@ export default {
           "0%, 100%": { transform: "translateY(0px)" },
           "50%": { transform: "translateY(-8px)" },
         },
+        hue: {
+          "0%": { filter: "hue-rotate(0deg)" },
+          "100%": { filter: "hue-rotate(360deg)" },
+        },
       },
       animation: {
         shimmer: "shimmer 2.5s linear infinite",
         "pulse-glow": "pulse-glow 2.4s ease-in-out infinite",
         float: "float 5s ease-in-out infinite",
+        hue: "hue 6s linear infinite",
       },
     },
   },

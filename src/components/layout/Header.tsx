@@ -1,4 +1,5 @@
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useCasinoStore } from "../../store/casinoStore";
 import { useAuthStore } from "../../store/authStore";
 import { useToastStore } from "../../store/toastStore";
@@ -27,6 +28,19 @@ export function Header({ active, onNavigate, onMenuClick }: { active: AppTab; on
   const claimDaily = useCasinoStore((s) => s.claimDaily);
   const push = useToastStore((s) => s.push);
   const visibleTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+
+  // Floating "+N" over the balance whenever it goes up, wherever the win came from.
+  const prevCredits = useRef(credits);
+  const [gains, setGains] = useState<{ id: number; amount: number }[]>([]);
+  useEffect(() => {
+    const delta = credits - prevCredits.current;
+    prevCredits.current = credits;
+    if (delta <= 0) return;
+    const id = Date.now() + Math.random();
+    setGains((g) => [...g.slice(-3), { id, amount: delta }]);
+    const t = setTimeout(() => setGains((g) => g.filter((x) => x.id !== id)), 1600);
+    return () => clearTimeout(t);
+  }, [credits]);
 
   function handleDaily() {
     const reward = claimDaily();
@@ -68,9 +82,33 @@ export function Header({ active, onNavigate, onMenuClick }: { active: AppTab; on
         </nav>
 
         <div className="flex flex-1 lg:flex-none items-center justify-end gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 sm:px-4 sm:py-2">
-            <IconCoin className="h-4 w-4 text-gold-400" />
+          <div className="relative flex items-center gap-2 rounded-full border border-gold-400/25 bg-gradient-to-b from-white/[0.08] to-white/[0.02] px-3 py-1.5 sm:px-4 sm:py-2"
+          >
+            {gains.length > 0 && (
+              <motion.span
+                key={gains[gains.length - 1].id}
+                className="pointer-events-none absolute inset-0 rounded-full"
+                initial={{ boxShadow: "0 0 0px rgba(246,191,75,0)" }}
+                animate={{ boxShadow: ["0 0 0px rgba(246,191,75,0)", "0 0 22px rgba(246,191,75,0.7)", "0 0 0px rgba(246,191,75,0)"] }}
+                transition={{ duration: 1.1 }}
+              />
+            )}
+            <IconCoin className="h-4 w-4 text-gold-400 drop-shadow-[0_0_6px_rgba(246,191,75,0.7)]" />
             <AnimatedNumber value={credits} className="font-display text-sm font-bold text-white tabular-nums" />
+            <AnimatePresence>
+              {gains.map((g) => (
+                <motion.span
+                  key={g.id}
+                  initial={{ opacity: 0, y: 0, scale: 0.8 }}
+                  animate={{ opacity: [0, 1, 1, 0], y: 26, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 1.5, ease: "easeOut" }}
+                  className="pointer-events-none absolute right-2 top-full whitespace-nowrap font-display text-xs font-black text-gold-300 drop-shadow-[0_0_6px_rgba(246,191,75,0.8)]"
+                >
+                  +{g.amount.toLocaleString("fr-FR")}
+                </motion.span>
+              ))}
+            </AnimatePresence>
           </div>
 
           <div title="Jackpot progressif" className="hidden items-center gap-1.5 rounded-full border border-gold-500/30 bg-gold-500/10 px-3 py-1.5 md:flex">
