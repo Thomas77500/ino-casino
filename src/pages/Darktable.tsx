@@ -7,6 +7,8 @@ import { useToastStore } from "../store/toastStore";
 import { useDarktableStore, roundDurationMs, BETTING_WINDOW_MS } from "../store/darktableStore";
 import { useDebtsStore } from "../store/debtsStore";
 import { multiplierAt } from "../lib/crashEngine";
+import { CrashChart } from "../components/games/CrashChart";
+import { RouletteWheel } from "../components/games/RouletteWheel";
 import { colorOf } from "../lib/rouletteEngine";
 import { rouletteChoiceWins, diceChoiceWins, ROULETTE_PAYOUT, DICE_PAYOUT, type RouletteChoice, type DiceChoice, type DarktableGameType } from "../lib/darktableGames";
 import { xpForPayout } from "../lib/xp";
@@ -110,6 +112,19 @@ export function Darktable() {
     return () => clearInterval(id);
   }, [phase, round?.id, gameType]);
 
+  // Kick the physical wheel once per roulette round, sized to whatever is left of the reveal
+  // window (joining mid-spin still lands the ball exactly when the round resolves).
+  const [wheelSpin, setWheelSpin] = useState({ trigger: 0, settleMs: 3000, roundId: "" });
+  useEffect(() => {
+    if (!round || gameType !== "roulette" || phase !== "running" || wheelSpin.roundId === round.id) return;
+    setWheelSpin((w) => ({ trigger: w.trigger + 1, settleMs: Math.max(1200, resolvesAt - Date.now() - 150), roundId: round.id }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, round?.id, gameType]);
+
+  // fixed per round: the page re-renders every frame, random keyframes would jitter
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const diceWaypoints = useMemo(() => [10 + Math.random() * 80, 10 + Math.random() * 80], [round?.id]);
+
   const myBet = useMemo(() => bets.find((b) => b.userId === account?.id), [bets, account?.id]);
 
   // Resolves my own bet once the round ends: Crash losses were already implicitly final (no
@@ -208,71 +223,93 @@ export function Darktable() {
               <div className="mb-3 flex justify-center">
                 <Badge tone="neutral">{GAME_ICON[gameType]} {GAME_LABEL[gameType]}</Badge>
               </div>
-              <motion.div
-                animate={busted ? { x: [0, -8, 8, -5, 5, 0] } : {}}
-                transition={{ duration: 0.4 }}
-                className={cn(
-                  "relative flex h-56 flex-col items-center justify-center overflow-hidden rounded-2xl border",
-                  busted ? "border-red-500/40 bg-red-950/20" :
-                  gameType === "roulette" && phase === "ended" ? (rouletteColor === "red" ? "border-red-500/40 bg-red-950/20" : rouletteColor === "black" ? "border-white/20 bg-ink-950/60" : "border-emerald-500/40 bg-emerald-950/20") :
-                  "border-white/10 bg-gradient-to-b from-ink-900/60 to-ink-950/60"
-                )}
-              >
-                {gameType === "crash" && (
-                  <>
-                    <span className="text-4xl">{phase === "betting" ? "🃏" : phase === "running" ? "🎰" : phase === "ended" ? "💀" : "⏳"}</span>
-                    <motion.p
-                      animate={phase === "running" ? { scale: [1, 1.03, 1] } : {}}
-                      transition={{ duration: 0.5, repeat: Infinity }}
-                      className={cn("mt-2 font-display text-4xl font-bold sm:text-5xl", busted ? "text-red-400" : "text-white")}
-                    >
-                      {phase === "betting" ? `Mises ouvertes — ${secondsLeft}s` : `x${rate.toFixed(2)}`}
-                    </motion.p>
-                    {busted && <p className="mt-1 text-sm font-semibold text-red-400">CRASH</p>}
-                  </>
-                )}
+              {gameType === "crash" ? (
+                <CrashChart
+                  phase={phase === "running" ? "running" : phase === "ended" ? "ended" : "idle"}
+                  elapsedMs={round && phase !== "betting" && phase !== "waiting" ? Math.min(now, resolvesAt) - round.startsAt : 0}
+                  multiplier={rate}
+                  markers={bets
+                    .filter((b) => b.cashedOutMultiplier !== null)
+                    .map((b) => ({
+                      key: b.id,
+                      m: b.cashedOutMultiplier!,
+                      label: `${b.userId === account?.id ? "Toi" : b.username} x${b.cashedOutMultiplier!.toFixed(2)}`,
+                      mine: b.userId === account?.id,
+                    }))}
+                >
+                  <p
+                    className={cn("font-display text-4xl font-black tabular-nums sm:text-5xl", busted ? "text-red-400" : "text-white")}
+                    style={{ textShadow: "0 0 24px rgba(0,0,0,0.8)" }}
+                  >
+                    {phase === "betting" ? `Mises ouvertes — ${secondsLeft}s` : `x${rate.toFixed(2)}`}
+                  </p>
+                  {busted && <p className="mt-1 text-sm font-black tracking-[0.3em] text-red-400">CRASH</p>}
+                </CrashChart>
+              ) : (
+                <div
+                  className={cn(
+                    "relative flex min-h-56 flex-col items-center justify-center overflow-hidden rounded-2xl border p-4",
+                    gameType === "roulette" ? "border-[#5b3a1e] bg-[radial-gradient(ellipse_at_center,#14633d_0%,#06301c_100%)]" : "border-white/10 bg-gradient-to-b from-ink-900/60 to-ink-950/60"
+                  )}
+                >
+                  {gameType === "roulette" && (
+                    <div className="flex w-full flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-8">
+                      <div className="w-full max-w-[220px]">
+                        <RouletteWheel winningNumber={round?.outcome ?? null} spinTrigger={wheelSpin.trigger} spinMs={wheelSpin.settleMs + 1500} settleMs={wheelSpin.settleMs} />
+                      </div>
+                      <div className="text-center">
+                        {phase === "betting" ? (
+                          <p className="font-display text-3xl font-bold text-white">Mises ouvertes — {secondsLeft}s</p>
+                        ) : phase === "running" ? (
+                          <p className="font-display text-sm font-bold uppercase tracking-[0.3em] text-gold-300">Rien ne va plus</p>
+                        ) : phase === "ended" && round?.outcome != null ? (
+                          <motion.div initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 15 }} className="flex flex-col items-center gap-1">
+                            <span
+                              className={cn(
+                                "grid h-16 w-16 place-items-center rounded-full border-2 border-gold-400 font-display text-3xl font-bold text-white shadow-glow-gold",
+                                rouletteColor === "red" ? "bg-red-700" : rouletteColor === "black" ? "bg-ink-900" : "bg-emerald-700"
+                              )}
+                            >
+                              {round.outcome}
+                            </span>
+                            <span className="text-sm font-semibold uppercase text-white">{rouletteColor === "red" ? "Rouge" : rouletteColor === "black" ? "Noir" : "Vert"}</span>
+                          </motion.div>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
 
-                {gameType === "roulette" && (
-                  <>
-                    <motion.span
-                      className="text-4xl"
-                      animate={phase === "running" ? { rotate: 360 } : {}}
-                      transition={phase === "running" ? { duration: 0.5, repeat: Infinity, ease: "linear" } : {}}
-                    >
-                      🎡
-                    </motion.span>
-                    <p className={cn(
-                      "mt-2 font-display text-4xl font-bold sm:text-5xl",
-                      phase === "ended" ? (rouletteColor === "red" ? "text-red-400" : rouletteColor === "black" ? "text-white" : "text-emerald-400") : "text-white"
-                    )}>
-                      {phase === "betting" ? `Mises ouvertes — ${secondsLeft}s` : String(spinNumber).padStart(2, "0")}
-                    </p>
-                    {phase === "ended" && (
-                      <p className={cn("mt-1 text-sm font-semibold uppercase", rouletteColor === "red" ? "text-red-400" : rouletteColor === "black" ? "text-ice-200/70" : "text-emerald-400")}>
-                        {rouletteColor === "red" ? "Rouge" : rouletteColor === "black" ? "Noir" : "Vert"}
+                  {gameType === "dice" && (
+                    <div className="w-full max-w-md">
+                      <p className="mb-4 text-center font-display text-4xl font-black tabular-nums text-white sm:text-5xl">
+                        {phase === "betting" ? `Mises ouvertes — ${secondsLeft}s` : phase === "ended" ? (round?.outcome ?? 0).toFixed(2) : "…"}
                       </p>
-                    )}
-                  </>
-                )}
-
-                {gameType === "dice" && (
-                  <>
-                    <motion.span
-                      className="text-4xl"
-                      animate={phase === "running" ? { rotate: [0, -20, 20, -15, 15, 0] } : {}}
-                      transition={phase === "running" ? { duration: 0.35, repeat: Infinity } : {}}
-                    >
-                      🎲
-                    </motion.span>
-                    <p className="mt-2 font-display text-4xl font-bold text-white sm:text-5xl">
-                      {phase === "betting" ? `Mises ouvertes — ${secondsLeft}s` : (phase === "ended" ? (round?.outcome ?? 0) : spinDisplay).toFixed(2)}
-                    </p>
-                    {phase === "ended" && (
-                      <p className="mt-1 text-sm font-semibold text-ice-200/60">{(round?.outcome ?? 0) < 50 ? "Sous 50" : "Sur 50"}</p>
-                    )}
-                  </>
-                )}
-              </motion.div>
+                      {/* Stake-style dice track: under 50 on the left, over 50 on the right */}
+                      <div className="relative h-4 rounded-full bg-gradient-to-r from-sky-500/70 via-sky-500/70 to-gold-400/80">
+                        <div className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-white" />
+                        {(phase === "running" || phase === "ended") && round?.outcome != null && (
+                          <motion.div
+                            key={round.id}
+                            className="absolute top-1/2 -ml-5 -mt-5 grid h-10 w-10 place-items-center rounded-xl bg-white text-xl shadow-[0_6px_16px_rgba(0,0,0,0.5)]"
+                            initial={{ left: "50%", rotate: 0 }}
+                            animate={{
+                              left: ["50%", `${diceWaypoints[0]}%`, `${diceWaypoints[1]}%`, `${round.outcome}%`, `${round.outcome}%`],
+                              rotate: [0, 270, 540, 720, 720],
+                            }}
+                            transition={{ duration: Math.max(0.6, (resolvesAt - round.startsAt) / 1000), times: [0, 0.3, 0.6, 0.92, 1], ease: "easeInOut" }}
+                          >
+                            🎲
+                          </motion.div>
+                        )}
+                      </div>
+                      <div className="mt-3 flex justify-between text-[11px] font-semibold">
+                        <span className="text-sky-300">0 · Sous 50</span>
+                        <span className="text-gold-300">Sur 50 · 100</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
                 {phase === "betting" && !myBet && gameType === "roulette" && (

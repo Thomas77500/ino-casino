@@ -47,6 +47,8 @@ const smooth = (u: number) => u * u * (3 - 2 * u);
 
 interface Spin {
   start: number;
+  spinMs: number;
+  settleMs: number;
   W0: number;
   A: number; // total wheel rotation over SPIN_MS (clockwise)
   B0: number;
@@ -57,7 +59,17 @@ interface Spin {
   lastBounce: number;
 }
 
-export function RouletteWheel({ winningNumber, spinTrigger }: { winningNumber: number | null; spinTrigger: number; spinning?: boolean }) {
+export function RouletteWheel({
+  winningNumber,
+  spinTrigger,
+  spinMs = SPIN_MS,
+  settleMs = SETTLE_MS,
+}: {
+  winningNumber: number | null;
+  spinTrigger: number;
+  spinMs?: number;
+  settleMs?: number;
+}) {
   const wheelRef = useRef<SVGGElement>(null);
   const ballRef = useRef<SVGGElement>(null);
   const [highlight, setHighlight] = useState<number | null>(null);
@@ -77,18 +89,19 @@ export function RouletteWheel({ winningNumber, spinTrigger }: { winningNumber: n
 
       if (sp) {
         const t = now - sp.start;
-        s.W = sp.W0 + sp.A * easeOutCubic(Math.min(1, t / SPIN_MS));
-        if (t < SETTLE_MS) {
-          const u = t / SETTLE_MS;
+        s.W = sp.W0 + sp.A * easeOutCubic(Math.min(1, t / sp.spinMs));
+        const dropMs = sp.settleMs * (DROP_MS / SETTLE_MS);
+        if (t < sp.settleMs) {
+          const u = t / sp.settleMs;
           const free = sp.B0 - sp.Bt * (1 - (1 - u) ** 2);
           let jitter = 0;
           if (t < 350) {
             // croupier launch: ball climbs from its old pocket up onto the track
             ballR = sp.r0 + (BALL_TRACK - sp.r0) * smooth(t / 350);
-          } else if (t < DROP_MS) {
+          } else if (t < dropMs) {
             ballR = BALL_TRACK;
           } else {
-            const p = (t - DROP_MS) / (SETTLE_MS - DROP_MS);
+            const p = (t - dropMs) / (sp.settleMs - dropMs);
             const bounce = Math.abs(Math.sin(p * Math.PI * 4.5)) * 13 * (1 - p) ** 2;
             ballR = BALL_POCKET + (BALL_TRACK - BALL_POCKET) * (1 - p) ** 3 + bounce;
             jitter = Math.sin(p * Math.PI * 6) * 7 * (1 - p) ** 2; // deflector kicks
@@ -106,7 +119,7 @@ export function RouletteWheel({ winningNumber, spinTrigger }: { winningNumber: n
             playSound("chip");
           }
           ballDeg = s.W + sp.pocket * STEP;
-          if (t >= SPIN_MS) s.spin = null;
+          if (t >= sp.spinMs) s.spin = null;
         }
       } else {
         s.W += IDLE_DEG_PER_MS * dt;
@@ -129,9 +142,9 @@ export function RouletteWheel({ winningNumber, spinTrigger }: { winningNumber: n
     const A = 360 * 2 + Math.random() * 360;
     const Bt = 360 * 7 + Math.random() * 360;
     const B0 = s.W + s.pocket * STEP;
-    const Wsettle = s.W + A * easeOutCubic(SETTLE_MS / SPIN_MS);
+    const Wsettle = s.W + A * easeOutCubic(settleMs / spinMs);
     const corr = norm180(Wsettle + pocket * STEP - (B0 - Bt));
-    s.spin = { start: performance.now(), W0: s.W, A, B0, Bt, corr, pocket, r0: BALL_POCKET, lastBounce: -1 };
+    s.spin = { start: performance.now(), spinMs, settleMs, W0: s.W, A, B0, Bt, corr, pocket, r0: BALL_POCKET, lastBounce: -1 };
     setHighlight(null);
   }, [spinTrigger]);
 

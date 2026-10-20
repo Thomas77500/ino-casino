@@ -8,6 +8,7 @@ import { Button } from "../components/ui/Button";
 import { Badge } from "../components/ui/Badge";
 import { BetInput } from "../components/ui/BetInput";
 import { WinCelebration } from "../components/ui/WinCelebration";
+import { CrashChart } from "../components/games/CrashChart";
 import { formatCredits, cn } from "../lib/format";
 import { maxBetFor } from "../lib/betting";
 import { xpForPayout } from "../lib/xp";
@@ -16,24 +17,6 @@ import { tierFromMultiplier, type WinTier } from "../lib/winTiers";
 import { playSound } from "../lib/sounds";
 
 type Phase = "idle" | "running" | "ended";
-
-// Graph geometry (SVG units). Axes rescale every frame like real crash games: the curve always
-// fills the chart instead of flying off it past some fixed max multiplier.
-const W = 600;
-const H = 300;
-const PL = 44;
-const PR = 16;
-const PT = 16;
-const PB = 24;
-const NICE = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
-const niceStep = (range: number, lines: number) => NICE.find((s) => range / s <= lines) ?? NICE[NICE.length - 1];
-
-const STARS = Array.from({ length: 40 }, (_, i) => ({ x: (i * 37) % 100, y: (i * 61) % 100, s: (i % 3) + 1 }));
-const DEBRIS = Array.from({ length: 18 }, (_, i) => {
-  const a = (i / 18) * Math.PI * 2;
-  const d = 40 + (i % 4) * 22;
-  return { x: Math.cos(a) * d, y: Math.sin(a) * d };
-});
 
 function crashColor(m: number): string {
   return m < 2 ? "bg-red-500/20 text-red-300" : m < 10 ? "bg-emerald-500/20 text-emerald-300" : "bg-gold-500/20 text-gold-300";
@@ -58,7 +41,7 @@ export function Crash() {
   const [crashPoint, setCrashPoint] = useState<number | null>(null);
   const [cashedAt, setCashedAt] = useState<number | null>(null);
   const [celebration, setCelebration] = useState<{ tier: WinTier; payout: number } | null>(null);
-  const live = useRef({ bet, cashed: null as number | null, auto: 0 });
+  const live = useRef({ bet, cashed: null as number | null, auto: 0, crash: null as number | null, running: false });
 
   const crashHistory = history.filter((h) => h.game === "Crash").slice(0, 8);
   const pastCrashes = history
@@ -91,6 +74,19 @@ export function Crash() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, crashPoint]);
 
+  // Leaving mid-round: the round is already decided, so settle it as it would have played out —
+  // the auto cash-out still fires if it was below the crash point, otherwise the bet is lost.
+  useEffect(
+    () => () => {
+      const L = live.current;
+      if (!L.running || L.crash === null) return;
+      if (L.cashed === null && L.auto > 1 && L.auto < L.crash) cashOutAt(L.auto, true);
+      endRound(L.crash, true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   function start() {
     if (phase === "running" || credits < bet) {
       if (credits < bet) push({ kind: "info", title: "Crédits insuffisants" });
@@ -98,68 +94,48 @@ export function Crash() {
     }
     placeBet(bet);
     const auto = Number(autoCash.replace(",", "."));
-    live.current = { bet, cashed: null, auto: Number.isFinite(auto) ? auto : 0 };
+    const point = rollCrashPoint(winBias);
+    live.current = { bet, cashed: null, auto: Number.isFinite(auto) ? auto : 0, crash: point, running: true };
     setElapsed(0);
     setCashedAt(null);
-    setCrashPoint(rollCrashPoint(winBias));
+    setCrashPoint(point);
     setPhase("running");
     playSound("spin");
   }
 
-  function endRound(point: number) {
-    setPhase("ended");
-    playSound("boom");
+  function endRound(point: number, silent = false) {
     const L = live.current;
+    if (!L.running) return;
+    L.running = false;
+    setPhase("ended");
+    if (!silent) playSound("boom");
     const label = `Crash x${point.toFixed(2)}`;
     if (L.cashed === null) {
       recordRound({ game: "Crash", label, bet: L.bet, payout: 0, tier: "none" });
       push({ kind: "info", title: `Ça a explosé à x${point.toFixed(2)}`, description: "Manche perdue." });
     } else {
-      const payout = Math.round(L.bet * L.cashed);
-      recordRound({ game: "Crash", label, bet: L.bet, payout, tier: tierFromMultiplier(L.cashed) });
+      recordRound({ game: "Crash", label, bet: L.bet, payout: Math.round(L.bet * L.cashed), tier: tierFromMultiplier(L.cashed) });
     }
   }
 
-  function cashOutAt(m: number) {
+  function cashOutAt(m: number, silent = false) {
     const L = live.current;
-    if (L.cashed !== null) return;
+    if (L.cashed !== null || !L.running) return;
     L.cashed = m;
     setCashedAt(m);
-    playSound("win");
+    if (!silent) playSound("win");
     const payout = Math.round(L.bet * m);
     award(payout);
     addXp(xpForPayout(payout));
     const tier = tierFromMultiplier(m);
-    if (tier === "megaWin" || tier === "gigaWin" || tier === "maxWin") {
+    if (!silent && (tier === "megaWin" || tier === "gigaWin" || tier === "maxWin")) {
       setCelebration({ tier, payout });
     } else {
       push({ kind: "success", title: `Encaissé à x${m.toFixed(2)} — +${formatCredits(payout)} crédits` });
     }
   }
 
-  // --- graph ---
   const crashed = phase === "ended";
-  const tSec = elapsed / 1000;
-  const xMax = Math.max(8, tSec * 1.15);
-  const yMax = Math.max(2, multiplier * 1.25);
-  const X = (s: number) => PL + (s / xMax) * (W - PL - PR);
-  const Y = (m: number) => H - PB - ((m - 1) / (yMax - 1)) * (H - PB - PT);
-  const SAMPLES = 80;
-  const curve = Array.from({ length: SAMPLES + 1 }, (_, i) => {
-    const s = (tSec * i) / SAMPLES;
-    return [X(s), Y(Math.min(multiplier, multiplierAt(s * 1000)))] as const;
-  });
-  const linePath = curve.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const areaPath = `${linePath} L${X(tSec).toFixed(1)},${H - PB} L${PL},${H - PB} Z`;
-  const [tipX, tipY] = curve[curve.length - 1];
-  const ahead = [X(tSec + 0.15), Y(multiplierAt(elapsed + 150))];
-  const angle = phase === "idle" ? -35 : (Math.atan2(ahead[1] - tipY, ahead[0] - tipX) * 180) / Math.PI;
-  const yStep = niceStep(yMax - 1, 5);
-  const yTicks = Array.from({ length: Math.floor((yMax - 1) / yStep) + 1 }, (_, i) => 1 + i * yStep);
-  const xStep = niceStep(xMax, 6);
-  const xTicks = Array.from({ length: Math.floor(xMax / xStep) + 1 }, (_, i) => i * xStep);
-  const cashMark = cashedAt !== null ? { x: X(timeForMultiplier(cashedAt) / 1000), y: Y(cashedAt) } : null;
-  const stroke = crashed ? "#ef4444" : "#f6bf4b";
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
@@ -190,129 +166,31 @@ export function Crash() {
       )}
 
       <Card className="p-4 sm:p-8" glow>
-        <motion.div
-          animate={crashed && cashedAt === null ? { x: [0, -10, 10, -6, 6, -2, 0] } : { x: 0 }}
-          transition={{ duration: 0.45 }}
-          className={cn(
-            "relative aspect-[2/1] overflow-hidden rounded-2xl border transition-colors duration-300",
-            crashed ? "border-red-500/40 bg-red-950/25" : "border-white/10 bg-gradient-to-b from-ink-900/70 to-ink-950/80"
-          )}
+        <CrashChart
+          phase={phase}
+          elapsedMs={elapsed}
+          multiplier={multiplier}
+          shake={cashedAt === null}
+          markers={cashedAt !== null ? [{ key: "me", m: cashedAt, label: `Toi · x${cashedAt.toFixed(2)}`, mine: true }] : []}
         >
-          {/* parallax starfield — speeds up with the multiplier */}
-          <motion.div
-            className="absolute inset-0"
-            animate={phase === "running" ? { x: ["0%", "-50%"] } : { x: "0%" }}
-            transition={{ duration: Math.max(0.6, 6 / multiplier), repeat: Infinity, ease: "linear" }}
-            style={{ width: "200%" }}
+          <p
+            className={cn(
+              "font-display text-5xl font-black tabular-nums sm:text-6xl",
+              crashed ? "text-red-400" : cashedAt !== null ? "text-emerald-300" : "text-white"
+            )}
+            style={{ textShadow: "0 0 24px rgba(0,0,0,0.8)" }}
           >
-            {[0, 50].map((off) =>
-              STARS.map((s, i) => (
-                <span
-                  key={`${off}-${i}`}
-                  className="absolute rounded-full bg-white"
-                  style={{ left: `${off + s.x / 2}%`, top: `${s.y}%`, width: s.s, height: s.s, opacity: 0.15 + s.s * 0.12 }}
-                />
-              ))
-            )}
-          </motion.div>
-
-          <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full">
-            <defs>
-              <linearGradient id="crashArea" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={stroke} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={stroke} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            {yTicks.map((m) => (
-              <g key={`y${m}`}>
-                <line x1={PL} x2={W - PR} y1={Y(m)} y2={Y(m)} stroke="rgba(255,255,255,0.06)" />
-                <text x={PL - 6} y={Y(m)} textAnchor="end" dominantBaseline="central" fontSize={10} fill="rgba(200,215,255,0.45)">
-                  {m.toFixed(yStep < 1 ? 1 : 0)}x
-                </text>
-              </g>
-            ))}
-            {xTicks.map((s) => (
-              <text key={`x${s}`} x={X(s)} y={H - 8} textAnchor="middle" fontSize={10} fill="rgba(200,215,255,0.45)">
-                {s}s
-              </text>
-            ))}
-            {phase !== "idle" && (
-              <>
-                <path d={areaPath} fill="url(#crashArea)" />
-                <path d={linePath} fill="none" stroke={stroke} strokeWidth={3} strokeLinecap="round" style={{ filter: `drop-shadow(0 0 6px ${stroke})` }} />
-              </>
-            )}
-            {cashMark && (
-              <g>
-                <circle cx={cashMark.x} cy={cashMark.y} r={5} fill="#34d399" stroke="white" strokeWidth={1.5} />
-                <text x={cashMark.x} y={cashMark.y - 12} textAnchor="middle" fontSize={11} fontWeight="bold" fill="#34d399">
-                  Toi · x{cashedAt!.toFixed(2)}
-                </text>
-              </g>
-            )}
-          </svg>
-
-          {/* rocket rides the tangent of the curve */}
-          {!crashed && (
-            <div
-              className="absolute text-3xl"
-              style={{
-                left: `${((phase === "idle" ? PL + 20 : tipX) / W) * 100}%`,
-                top: `${((phase === "idle" ? H - PB - 20 : tipY) / H) * 100}%`,
-                transform: `translate(-50%,-50%) rotate(${angle + 45}deg)`,
-              }}
-            >
-              <motion.span
-                className="block"
-                animate={phase === "running" ? { x: [0, 0.8, -0.8, 0], y: [0, -0.8, 0.8, 0] } : {}}
-                transition={{ duration: 0.12, repeat: Infinity }}
-              >
-                🚀
-              </motion.span>
-            </div>
-          )}
+            x{multiplier.toFixed(2)}
+          </p>
           {crashed && (
-            <div className="absolute" style={{ left: `${(tipX / W) * 100}%`, top: `${(tipY / H) * 100}%` }}>
-              <motion.span
-                className="absolute -translate-x-1/2 -translate-y-1/2 text-5xl"
-                initial={{ scale: 0.2, opacity: 1 }}
-                animate={{ scale: [0.2, 1.8, 1.3], opacity: [1, 1, 0.85] }}
-                transition={{ duration: 0.5 }}
-              >
-                💥
-              </motion.span>
-              {DEBRIS.map((d, i) => (
-                <motion.span
-                  key={i}
-                  className={cn("absolute h-1.5 w-1.5 rounded-full", i % 2 ? "bg-orange-400" : "bg-red-500")}
-                  initial={{ x: 0, y: 0, opacity: 1 }}
-                  animate={{ x: d.x, y: d.y + 30, opacity: 0 }}
-                  transition={{ duration: 0.9, ease: "easeOut" }}
-                />
-              ))}
-            </div>
+            <motion.p initial={{ scale: 2, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-1 text-sm font-black tracking-[0.3em] text-red-400">
+              CRASH
+            </motion.p>
           )}
-
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <p
-              className={cn(
-                "font-display text-5xl font-black tabular-nums sm:text-6xl",
-                crashed ? "text-red-400" : cashedAt !== null ? "text-emerald-300" : "text-white"
-              )}
-              style={{ textShadow: "0 0 24px rgba(0,0,0,0.8)" }}
-            >
-              x{multiplier.toFixed(2)}
-            </p>
-            {crashed && (
-              <motion.p initial={{ scale: 2, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mt-1 text-sm font-black tracking-[0.3em] text-red-400">
-                CRASH
-              </motion.p>
-            )}
-            {phase === "running" && cashedAt !== null && (
-              <p className="mt-1 text-xs font-semibold text-emerald-300">Encaissé à x{cashedAt.toFixed(2)} — regarde jusqu'où ça monte…</p>
-            )}
-          </div>
-        </motion.div>
+          {phase === "running" && cashedAt !== null && (
+            <p className="mt-1 text-xs font-semibold text-emerald-300">Encaissé à x{cashedAt.toFixed(2)} — regarde jusqu'où ça monte…</p>
+          )}
+        </CrashChart>
 
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
           {phase === "running" ? (

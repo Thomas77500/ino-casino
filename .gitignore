@@ -3,3 +3,6 @@ dist
 .DS_Store
 .env
 tsconfig.tsbuildinfo
+
+# local-only SQL (contains secrets)
+*.local.sql
